@@ -1,0 +1,30 @@
+---
+server:
+  persistentVolume:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1"
+  service:
+    type: NodePort
+    port: 9090
+    nodePort: 30090
+  global:
+    scrape_interval: "10s"
+    evaluation_interval: "1s"
+    scrape_timeout: "8s"
+  
+
+prometheus:
+  prometheusSpec:
+    scrape_interval: "10s"
+    evaluation_interval: "1s"
+    scrape_timeout: "8s"
+
+nodeExporter:
+  enabled: true
