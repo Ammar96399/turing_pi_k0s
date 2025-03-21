@@ -112,7 +112,8 @@
         {{
           (
             groups[server_group] | default([])
-            + groups[agent_group] | default([])
+            + groups[rpi4b_agent_group] | default([])
+            + groups[rpi5_agent_group] | default([])
           )
           | map('extract', hostvars, ['ansible_default_ipv4', 'address'])
           | flatten | unique | list
@@ -207,48 +208,41 @@
     validate: 'visudo -cf %s'
   when: ansible_os_family == 'RedHat'
 
-- name: Setup alternative K3s directory
-  when:
-    - k3s_server_location is defined
-    - k3s_server_location != "/var/lib/rancher/k3s"
-  block:
-    - name: Make rancher directory
-      ansible.builtin.file:
-        path: "/var/lib/rancher"
-        mode: "0755"
-        state: directory
-    - name: Create symlink
-      ansible.builtin.file:
-        dest: /var/lib/rancher/k3s
-        src: "{{ k3s_server_location }}"
-        force: true
-        state: link
+- name: Create k0s Directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  loop:
+    - "{{ k0s_config_dir }}"
+    - "{{ k0s_data_dir }}"
+    - "{{ k0s_libexec_dir }}"
 
-- name: Setup extra manifests
-  when: extra_manifests is defined
-  block:
-    - name: Make manifests directory
-      ansible.builtin.file:
-        path: "/var/lib/rancher/k3s/server/manifests"
-        mode: "0700"
-        state: directory
-    - name: Copy manifests
-      ansible.builtin.copy:
-        src: "{{ item }}"
-        dest: "/var/lib/rancher/k3s/server/manifests"
-        mode: "0600"
-      loop: "{{ extra_manifests }}"
+# - name: Write the custom k0s config file
+#   ansible.builtin.template:
+#     src: k0s.yaml.j2
+#     dest: "{{ k0s_config_dir }}/k0s.yaml"
+#     owner: "{{ ansible_user }}"
+#     group: "{{ ansible_user }}"
+#     mode: 0600
+#   when: k0s_use_custom_config
 
-- name: Setup optional private registry configuration
-  when: registries_config_yaml is defined
-  block:
-    - name: Make k3s config directory
-      ansible.builtin.file:
-        path: "/etc/rancher/k3s"
-        mode: "0755"
-        state: directory
-    - name: Copy config values
-      ansible.builtin.copy:
-        content: "{{ registries_config_yaml }}"
-        dest: "/etc/rancher/k3s/registries.yaml"
-        mode: "0644"
+# - name: Generate default k0s config file
+#   become: true
+#   when: not k0s_use_custom_config
+#   block:
+#     - name: Create default k0s config
+#       register: default_k0s_config
+#       ansible.builtin.command: k0s default-config > {{ k0s_config_dir }}/k0s.yaml
+#       args:
+#         creates: "{{ k0s_config_dir }}/k0s.yaml"
+#     - name: Store default k0f config
+#       ansible.builtin.copy:
+#         dest: "{{ k0s_config_dir }}/k0s.yaml"
+#         content: "{{ default_k0s_config.stdout }}"
+#         owner: "{{ ansible_user }}"
+#         group: "{{ ansible_user }}"
+#         mode: 0600

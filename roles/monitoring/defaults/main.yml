@@ -16,4 +16,4 @@ grafana_admin_password: "admin"
 helm_version: "v3.17.0"
 helm_binary_path: "/usr/local/bin/helm"
 
-k3s_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+k3s_kubeconfig: "/home/ubuntu/k0s-kubeconfig.yml"

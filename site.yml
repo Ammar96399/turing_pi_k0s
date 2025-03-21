@@ -4,8 +4,8 @@
   gather_facts: true
   become: true
   roles:
+    - download
     - role: prereq
-    - role: airgap
     - role: raspberrypi
 
 - name: Setup k3s server
@@ -13,7 +13,7 @@
   gather_facts: true
   become: true
   roles:
-    - role: k3s_server
+    - role: k0s_server
   vars:
     label: model=cm4
 
@@ -22,7 +22,7 @@
   gather_facts: true
   become: true
   roles:
-    - role: k3s_agent
+    - role: k0s_agent
   vars:
     label: model=rk1
 

@@ -1,8 +1,7 @@
 ---
 server:
   persistentVolume:
-    enabled: true
-    size: 1Gi
+    enabled: false
   resources:
     requests:
       memory: "256Mi"
@@ -28,3 +27,6 @@ prometheus:
 
 nodeExporter:
   enabled: true
+
+alertmanager:
+  enabled: false

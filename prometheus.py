@@ -5,7 +5,7 @@ from datetime import datetime
 
 PROMETHEUS_URL = "http://131.254.100.29:30090/api/v1/query"
 
-QUERY = '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[20s])))'
+QUERY = 'min_over_time((1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[15m]))) * 100 [15m:10s]) < 30'
 
 OUTPUT_CSV = "cpu_usage_per_node.csv"
 
