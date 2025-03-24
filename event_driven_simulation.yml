@@ -1,0 +1,14 @@
+---
+- name: Prepare event term simulation
+  hosts: all
+  gather_facts: true
+  become: true
+  roles:
+    - role: event_driven_simulation_prereq
+
+- name: Run event term simulation
+  hosts: server
+  gather_facts: true
+  become: true
+  roles:
+    - role: event_driven_simulation
