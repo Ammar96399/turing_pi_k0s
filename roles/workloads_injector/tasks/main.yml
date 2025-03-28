@@ -1,0 +1,12 @@
+---
+- name: Run workload injector in the background
+  ansible.builtin.shell: python3 {{ playbook_dir }}/roles/workloads_injector/files/workload_injector.py {{ observatory }} {{ one_minute }} > {{ results_dir }}/workload_injector.txt 2>&1 & echo $! > {{ results_dir }}/workload_injector.txt
+  args:
+    chdir: "{{ playbook_dir }}"
+  register: script_result
+
+- name: Run switching on and off nodes
+  ansible.builtin.shell: python3 {{ playbook_dir }}/roles/workloads_injector/files/workload_injector.py {{ observatory }} {{ one_minute }} > {{ results_dir }}/workload_injector.txt 2>&1 & echo $! > {{ results_dir }}/workload_injector.txt
+  args:
+    chdir: "{{ playbook_dir }}"
+  register: script_result

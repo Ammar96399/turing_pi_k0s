@@ -1,0 +1,27 @@
+---
+- name: Clean results_dir
+  ansible.builtin.file:
+    path: "{{ results_dir }}"
+    state: absent
+
+- name: Recreate results_dir
+  ansible.builtin.file:
+    path: "{{ results_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Run Prometheus data collection script locally in the background
+  ansible.builtin.shell: timeout {{ 1440 * one_minute + 300 }}s python3 {{ playbook_dir }}/roles/system_measurements/files/prometheus_to_csv.py {{ results_dir }}/cpu_usage.csv {{ scrape_interval }} > {{ results_dir }}/prometheus_log.txt 2>&1 & echo $! > {{ results_dir }}/prometheus_pid.txt
+  args:
+    chdir: "{{ playbook_dir }}"
+  register: script_result
+
+- name: Run power measurement script locally in the background
+  ansible.builtin.shell: timeout {{ 1440 * one_minute + 300 }}s python3 {{ playbook_dir }}/roles/system_measurements/files/collect_power.py {{ results_dir }}/power_usage.csv > {{ results_dir }}/power_log.txt 2>&1 & echo $! > {{ results_dir }}/power_pid.txt
+  args:
+    chdir: "{{ playbook_dir }}"
+  register: script_result
+
+- name: Display script start information
+  ansible.builtin.debug:
+    msg: "Prometheus data collection started. PID saved in {{ results_dir }}/prometheus_pid.txt. Logs in {{ results_dir }}/prometheus_log.txt"

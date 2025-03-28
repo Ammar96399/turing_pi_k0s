@@ -72,7 +72,9 @@
           containers:
             - name: event-driven-load-injector
               image: event-driven-load-injector:local
-              args: ["{{ workload_number }}"]
+              args:
+                - "{{ workload_number }}"
+                - "{{ one_minute }}"
               imagePullPolicy: Never
               env:
                 - name: NODE_NAME
