@@ -17,10 +17,10 @@
   vars:
     workload: eventdriven
 
-- name: Inject workload
-  hosts: localhost
-  gather_facts: true
-  roles:
-    - role: workloads_injector
-  vars:
-    observatory: event_driven_observatory
+# - name: Inject workload
+#   hosts: localhost
+#   gather_facts: true
+#   roles:
+#     - role: workloads_injector
+#   vars:
+#     observatory: event_driven_observatory

@@ -1,41 +1,76 @@
 import pyvisa
 import time
 import csv
-import argparse
+from datetime import datetime
+import sys
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description='Collect current data and save to a CSV file.')
-parser.add_argument('filename', type=str, help='The CSV file to save the data')
-args = parser.parse_args()
+VISA_ADDRESS = "TCPIP0::10.0.0.20::inst0::INSTR"
 
-rm = pyvisa.ResourceManager()
-inst = rm.open_resource('TCPIP0::10.0.0.20::inst0::INSTR')
-inst.timeout = 5000
+def connect_instrument():
+    """Establish connection to the instrument with retry logic."""
+    rm = pyvisa.ResourceManager()
+    for attempt in range(10):  # Try reconnecting up to 5 times
+        try:
+            dmm = rm.open_resource(VISA_ADDRESS)
+            dmm.timeout = 10000  # Increase timeout to 10 seconds
+            dmm.write("*CLS")  # Clear previous errors
+            print("Connected to:", dmm.query("*IDN?"))
+            dmm.write("CONF:CURR:DC 10")  # Set to 10A measurement
+            return dmm
+        except pyvisa.VisaIOError as e:
+            print(f"Connection attempt {attempt + 1} failed: {e}")
+            time.sleep(5)  # Wait before retrying
+    print("Failed to connect to instrument after multiple attempts.")
+    return None
 
-#print(inst.query('*IDN?'))
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python collect_power.py <output_csv_file>")
+        sys.exit(1)
+    
+    csv_filename = sys.argv[1]
+    dmm = connect_instrument()
+    if dmm is None:
+        return
 
-inst.write('*RST')
-time.sleep(1)
-inst.write('CONF:CURR:DC 10')
-inst.write('CURR:DC:RANG 10')
-inst.write('SAMP:COUN 1')
-inst.write('TRIG:SOUR IMM')
+    with open(csv_filename, mode='w', newline='') as csvfile:
+        csv_writer = csv.writer(csvfile)
+        csv_writer.writerow(["unixtime", "current_A"])  # CSV header
 
-start_time = time.time()
+        print("Starting data logging in 10 A mode. Press Ctrl+C to stop.")
+        try:
+            next_time = time.time() + 1
+            while True:
+                try:
+                    timestamp = time.time()
+					
+                    try:
+                        current_value = float(dmm.query("READ?").strip())
+                    except ValueError as e:
+                        print(f"Error converting measurement to float: {e}")
+                        continue  # Skip this iteration if conversion fails
+                    
+                    csv_writer.writerow([timestamp, current_value])
+                    csvfile.flush()
+                    
+					# Wait until the next second boundary
+                    sleep_time = max(0, next_time - time.time())
+                    time.sleep(sleep_time)
+                    next_time += 1  # Move to the next second
+                
+                except pyvisa.VisaIOError as e:
+                    print(f"VISA I/O Error: {e}, attempting to reconnect...")
+                    dmm.close()
+                    dmm = connect_instrument()
+                    if dmm is None:
+                        break  # Stop if reconnection fails
 
-with open(args.filename, 'w', newline='') as f:
-	writer = csv.writer(f)
-	writer.writerow(['unixtime', 'timestamp', 'current'])
+        except KeyboardInterrupt:
+            print("Data logging stopped by user.")
+        finally:
+            if dmm:
+                dmm.close()  # Ensure VISA session is closed
+                print("Instrument connection closed.")
 
-	while True:
-		for _ in range(5):
-			inst.write('INIT')
-			current = float(inst.query('FETC?'))
-
-			current_time = time.time()
-			timestamp = current_time - start_time
-
-			writer.writerow([current_time, timestamp, current])
-			#print(f"{timestamp:.1f}: I={current:.4f} A")
-
-inst.close() 
+if __name__ == "__main__":
+    main()

@@ -1,12 +1,48 @@
 ---
-- name: Run workload injector in the background
-  ansible.builtin.shell: python3 {{ playbook_dir }}/roles/workloads_injector/files/workload_injector.py {{ observatory }} {{ one_minute }} > {{ results_dir }}/workload_injector.txt 2>&1 & echo $! > {{ results_dir }}/workload_injector.txt
+- name: Stop rabbitmq container
+  ansible.builtin.command: docker compose down
+  args:
+    chdir: "{{ playbook_dir }}/roles/workloads_injector/files/"
+
+- name: Wait 10 seconds
+  ansible.builtin.wait_for:
+    timeout: 10
+
+- name: Remove rabbitmq volume
+  ansible.builtin.command: docker volume rm files_rabbitmq-data
+  args:
+    chdir: "{{ playbook_dir }}/roles/workloads_injector/files/"
+  ignore_errors: true
+
+- name: Start rabbitmq container
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ playbook_dir }}/roles/workloads_injector/files/"
+  register: script_result
+
+- name: Wait for rabbitmq to be up
+  ansible.builtin.wait_for:
+    port: 5672
+    delay: 10
+    timeout: 60
+    state: started
+  register: script_result
+
+- name: Log the timestamp before starting the workload injector
+  ansible.builtin.shell: date +%s > {{ results_dir }}/experiment_start_time.txt
   args:
     chdir: "{{ playbook_dir }}"
   register: script_result
 
-- name: Run switching on and off nodes
-  ansible.builtin.shell: python3 {{ playbook_dir }}/roles/workloads_injector/files/workload_injector.py {{ observatory }} {{ one_minute }} > {{ results_dir }}/workload_injector.txt 2>&1 & echo $! > {{ results_dir }}/workload_injector.txt
+- name: Run workload injector in the background
+  ansible.builtin.shell: python3 {{ playbook_dir }}/roles/workloads_injector/files/workload_injector.py {{ observatory }} {{ one_minute }} > {{ results_dir }}/workload_injector_logs.txt 2>&1 & echo $! > {{ results_dir }}/workload_injector.txt
   args:
     chdir: "{{ playbook_dir }}"
   register: script_result
+
+
+# - name: Run switching on and off nodes
+#   ansible.builtin.shell: python3 {{ playbook_dir }}/roles/workloads_injector/files/workload_injector.py {{ observatory }} {{ one_minute }} > {{ results_dir }}/workload_injector.txt 2>&1 & echo $! > {{ results_dir }}/workload_injector.txt
+#   args:
+#     chdir: "{{ playbook_dir }}"
+#   register: script_result

@@ -68,7 +68,7 @@ def main():
     one_minute = int(sys.argv[2])
     seen_timestamps = set()
 
-    cpu_usage_query = 'rate(node_cpu_seconds_total{mode="user"}[5m]) * 100'
+    cpu_usage_query = f'rate(node_cpu_seconds_total{{mode="user"}}[{int(one_minute * 5)}s]) * 100'
     temp_query = 'node_hwmon_temp_celsius'
 
     print(f"Starting infinite loop to append data to {output_file}")

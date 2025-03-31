@@ -57,6 +57,10 @@
 
 - name: Run Jobs for multiple workload numbers in {{ workload }}-simulation namespace
   ansible.builtin.shell: |
+    python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_request.py {{ workload_number }} > /tmp/request;
+    python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_limit.py {{ workload_number }} > /tmp/limit;
+    export REQUEST=$(cat /tmp/request);
+    export LIMIT=$(cat /tmp/limit);
     k0s kubectl apply -f - <<EOF
     apiVersion: batch/v1
     kind: Job
@@ -83,12 +87,17 @@
                       fieldPath: spec.nodeName
               resources:
                 requests:
-                  cpu: "0"
+                  cpu: "${REQUEST}"
                 limits:
-                  cpu: "1"
+                  cpu: "${LIMIT}"
           restartPolicy: OnFailure
+          tolerations:
+            - key: "node-role.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 1
     EOF
-  loop: "{{ range(1, 61) | list }}"
+  loop: "{{ range(1, 57) | list }}"
   loop_control:
     loop_var: workload_number
   register: job_result

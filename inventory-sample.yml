@@ -19,7 +19,7 @@ turing_pi_cluster:
     one_minute: 10
     scrape_interval: 5
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_1"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_3"
     local_user: akazem
     workload: eventdriven
     # airgap_dir: /tmp/k3s-airgap-images
@@ -33,6 +33,6 @@ localhost:
     one_minute: 10
     scrape_interval: 5
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_1"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_3"
     local_user: akazem
     workload: eventdriven

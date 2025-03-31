@@ -54,7 +54,7 @@ def publish_cpu_load(csv_file, folder_name, minute):
 
 def process_workload_folders():
     for minute in range(1, 1442):  # 1440 minutes = 1 day + header row
-        for i in range(1, 61):  # workload_1 to workload_60
+        for i in range(1, 57):  # workload_1 to workload_56
             folder_name = f"workload_{i}"
             folder_path = Path(BASE_PATH) / folder_name / "turing_pi"
 
@@ -71,7 +71,14 @@ def process_workload_folders():
 
     # Close connection after all messages are sent
     connection.close()
+
     print("Finished publishing all workload folders.")
+
+def log_unix_time(file_path):
+    log_file_path = Path(file_path)
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)  # Create parent directories if they don't exist
+    with open(log_file_path, "a") as log_file:  # Open in append mode to create the file if it doesn't exist
+        log_file.write(f"{int(time.time())}\n")
 
 if __name__ == "__main__":
     print(f"Base path: {BASE_PATH}")
@@ -79,6 +86,7 @@ if __name__ == "__main__":
     print(f"Waiting time between lines: {WAIT_TIME} seconds")
     try:
         process_workload_folders()
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_3/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Stopped by user.")
         connection.close()
@@ -88,3 +96,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Unexpected error: {e}")
         connection.close()
+
+
+        
