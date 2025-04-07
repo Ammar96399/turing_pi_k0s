@@ -1,6 +1,5 @@
 ---
 prometheus_helm_version: "27.5.0"
-prometheus_namespace: "monitoring"
 prometheus_release_name: "prometheus"
 prometheus_chart_repo: "https://prometheus-community.github.io/helm-charts"
 prometheus_chart_name: "prometheus-community/prometheus"
@@ -12,8 +11,3 @@ grafana_release_name: "grafana"
 grafana_chart_repo: "https://grafana.github.io/helm-charts"
 grafana_chart_name: "grafana/grafana"
 grafana_admin_password: "admin"
-
-helm_version: "v3.17.0"
-helm_binary_path: "/usr/local/bin/helm"
-
-k3s_kubeconfig: "/home/ubuntu/k0s-kubeconfig.yml"

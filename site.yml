@@ -15,7 +15,7 @@
   roles:
     - role: k0s_server
   vars:
-    label: model=cm4
+    label: role=server,model=rk1
 
 - name: Setup k3s agent
   hosts: agent
@@ -24,7 +24,7 @@
   roles:
     - role: k0s_agent
   vars:
-    label: model=rk1
+    label: "{{ 'role=worker,model=rk1' if inventory_hostname == 'akazem-r1' else 'role=worker,model=cm4' }}"
 
 - name: Setup monitoring
   hosts: server

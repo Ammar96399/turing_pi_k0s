@@ -39,12 +39,12 @@
     mode: "0755"
     owner: "{{ ansible_user }}"
 
-- name: Deletes the event-driven simulation directory
+- name: Deletes the {{ workload }} simulation directory
   ansible.builtin.file:
     path: /home/{{ ansible_user }}/simulation/{{ workload }}_simulation
     state: absent
 
-- name: Create the event-driven simulation directory
+- name: Create the {{ workload }} simulation directory
   ansible.builtin.file:
     path: /home/{{ ansible_user }}/simulation/{{ workload }}_simulation
     state: directory

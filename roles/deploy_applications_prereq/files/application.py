@@ -31,6 +31,7 @@ def get_node_model():
         sys.exit(1)
     node = v1.read_node(name=node_name)
     model = node.metadata.labels.get("model")
+    
     if not model:
         print(f"No 'model' label found on node {node_name}")
         sys.exit(1)

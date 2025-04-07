@@ -24,6 +24,6 @@ datasources:
     datasources:
     - name: Prometheus
       type: prometheus
-      url: http://{{ prometheus_release_name }}-server.{{ prometheus_namespace }}.svc.cluster.local:9090
+      url: http://{{ prometheus_release_name }}-server.{{ monitoring_namespace }}.svc.cluster.local:9090
       access: proxy
       isDefault: true

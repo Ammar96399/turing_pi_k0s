@@ -18,7 +18,7 @@ server:
     evaluation_interval: "{{ scrape_interval }}s"
     scrape_timeout: "{{ scrape_interval }}s"
   nodeSelector:
-    model: cm4
+    role: server
 
 prometheus:
   prometheusSpec:

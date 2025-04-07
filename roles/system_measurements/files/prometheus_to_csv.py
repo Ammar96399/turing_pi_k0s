@@ -1,105 +1,158 @@
 import requests
+import json
+from datetime import datetime
+import time
 import csv
 import sys
-import time
-from datetime import datetime, timedelta
 
-PROMETHEUS_URL = "http://131.254.100.29:30090"
-
-QUERY_WINDOW = timedelta(minutes=5)
-
-def query_prometheus(query, start_time, end_time, step="5s"):
-    params = {
-        "query": query,
-        "start": start_time,
-        "end": end_time,
-        "step": step
-    }
+def get_all_instances(prometheus_url="http://131.254.100.18:30090"):
+    """
+    Query Prometheus to get all unique instances for node_cpu_seconds_total.
+    
+    Args:
+        prometheus_url (str): URL of the Prometheus server.
+    
+    Returns:
+        list: List of unique instance strings (e.g., "131.254.100.18:9100").
+    """
+    query = 'node_cpu_seconds_total'
+    url = f"{prometheus_url}/api/v1/query"
+    
     try:
-        response = requests.get(f"{PROMETHEUS_URL}/api/v1/query_range", params=params)
+        response = requests.get(url, params={"query": query}, timeout=10)
         response.raise_for_status()
-        return response.json()["data"]["result"]
-    except requests.RequestException as e:
-        print(f"Error querying Prometheus: {e}")
+        data = response.json()
+        
+        instances = set()
+        if data['status'] == 'success' and 'data' in data and 'result' in data['data']:
+            for result in data['data']['result']:
+                instance = result['metric'].get('instance', '')
+                if instance:
+                    instances.add(instance)
+        
+        return list(instances)
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying instances from Prometheus: {e}")
         return []
 
-def append_to_csv(cpu_usage_data, temp_data, filename, seen_timestamps):
-    cpu_usage_dict = {}
-    temp_dict = {}
+def query_prometheus(instance, range_str, prometheus_url="http://131.254.100.18:30090"):
+    """
+    Query Prometheus for CPU usage and temperature for a specific instance.
+    
+    Args:
+        instance (str): The instance to query (e.g., "131.254.100.18:9100").
+        range_str (str): Time range for the rate function (e.g., "20s").
+        prometheus_url (str): URL of the Prometheus server.
+    
+    Returns:
+        tuple: (cpu_usage, cpu_temp) as floats, or (0.0, 0.0) if error.
+    """
+    # Query for CPU usage (100 * (1 - avg idle rate))
+    cpu_query = f'100 * (1 - avg(rate(node_cpu_seconds_total{{mode="idle", instance="{instance}"}}[{range_str * 2}s])))'
+    cpu_url = f"{prometheus_url}/api/v1/query"
+    
+    # Query for CPU temperature (assuming node_hwmon_temp_celsius)
+    temp_query = f'avg(node_hwmon_temp_celsius{{instance="{instance}"}})'
+    temp_url = f"{prometheus_url}/api/v1/query"
+    
+    cpu_usage = 0.0
+    cpu_temp = 0.0
+    
+    # Query CPU usage
+    try:
+        response = requests.get(cpu_url, params={"query": cpu_query}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data['status'] == 'success' and 'data' in data and 'result' in data['data']:
+            if data['data']['result']:
+                value = data['data']['result'][0]['value'][1]
+                cpu_usage = float(value) if value != "NaN" else 0.0
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying CPU usage for instance {instance}: {e}")
+    
+    # Query CPU temperature
+    try:
+        response = requests.get(temp_url, params={"query": temp_query}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data['status'] == 'success' and 'data' in data and 'result' in data['data']:
+            if data['data']['result']:
+                value = data['data']['result'][0]['value'][1]
+                cpu_temp = float(value) if value != "NaN" else 0.0
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying CPU temperature for instance {instance}: {e}")
+    
+    return cpu_usage, cpu_temp
 
-    for result in cpu_usage_data:
-        node = result["metric"].get("instance", "unknown")
-        for timestamp, value in result["values"]:
-            cpu_usage_dict[(int(float(timestamp)), node)] = float(value)
-
-    for result in temp_data:
-        node = result["metric"].get("instance", "unknown")
-        for timestamp, value in result["values"]:
-            temp_dict[(int(float(timestamp)), node)] = float(value)
-
-    file_exists = os.path.isfile(filename)
-    with open(filename, mode="a", newline="") as csvfile:
-        fieldnames = ["unix_timestamp", "node", "cpu_usage_percent", "cpu_temp_celsius"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-        if not file_exists:
+def save_to_csv(usage_data, output_file, timestamp):
+    """
+    Save CPU usage and temperature to a CSV file.
+    
+    Args:
+        usage_data (dict): Dictionary of instance to (cpu_usage, cpu_temp) tuple.
+        output_file (str): Path to the output CSV file.
+        timestamp (str): Current timestamp for the record.
+    """
+    fieldnames = ['unix_timestamp', 'node', 'cpu_usage_percent', 'cpu_temp_celsius']
+    
+    with open(output_file, mode='a', newline='') as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        
+        # Write header only if file is new or empty
+        if csv_file.tell() == 0:
             writer.writeheader()
-
-        all_timestamps = set(cpu_usage_dict.keys()).union(temp_dict.keys())
-        for timestamp, node in sorted(all_timestamps):
-            key = (timestamp, node)
-            if key not in seen_timestamps:
-                writer.writerow({
-                    "unix_timestamp": timestamp,
-                    "node": node,
-                    "cpu_usage_percent": cpu_usage_dict.get(key, ""),
-                    "cpu_temp_celsius": temp_dict.get(key, "")
-                })
-                seen_timestamps.add(key)
-
-    return seen_timestamps
+        
+        # Write each instance's usage and temperature
+        for instance, (cpu_usage, cpu_temp) in usage_data.items():
+            writer.writerow({
+                'unix_timestamp': int(timestamp),
+                'node': instance,
+                'cpu_usage_percent': round(cpu_usage, 2),  # Round to 2 decimal places
+                'cpu_temp_celsius': round(cpu_temp, 2)     # Round to 2 decimal places
+            })
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python prometheus_to_csv.py <output_csv_file> <one_minute>")
+        print("Usage: python script.py <output_file> <range_str>")
+        print("Example: python script.py cpu_usage_temp.csv 20s")
         sys.exit(1)
 
-    output_file = sys.argv[1]
-    one_minute = int(sys.argv[2])
-    seen_timestamps = set()
+    output_file = sys.argv[1]  # e.g., "cpu_usage_temp.csv"
+    range_str = int(sys.argv[2])    # e.g., "20s"
 
-    cpu_usage_query = f'rate(node_cpu_seconds_total{{mode="user"}}[{int(one_minute * 5)}s]) * 100'
-    temp_query = 'node_hwmon_temp_celsius'
+    print(f"Starting to monitor CPU usage and temperature with range {range_str}. Data will be appended to {output_file}")
 
-    print(f"Starting infinite loop to append data to {output_file}")
-    while True:
-        end_time = datetime.now()
-        start_time = end_time - QUERY_WINDOW
+    # Get all unique instances
+    instances = get_all_instances()
+    if not instances:
+        print("No instances found. Exiting.")
+        sys.exit(1)
 
-        print(f"[{end_time}] Querying CPU usage: {cpu_usage_query}")
-        cpu_usage_data = query_prometheus(
-            query=cpu_usage_query,
-            start_time=start_time.timestamp(),
-            end_time=end_time.timestamp(),
-            step="5s"
-        )
+    try:
+        while True:
+            usage_data = {}
+            timestamp = time.time()  # Current Unix timestamp
+            
+            # Query each instance for CPU usage and temperature
+            for instance in instances:
+                cpu_usage, cpu_temp = query_prometheus(instance, range_str)
+                usage_data[instance] = (cpu_usage, cpu_temp)
+            
+            if usage_data:
+                print(f"Queried at {timestamp}: Found {len(usage_data)} instances")
+                save_to_csv(usage_data, output_file, timestamp)
+            else:
+                print("No data retrieved from Prometheus.")
 
-        print(f"[{end_time}] Querying CPU temperature: {temp_query}")
-        temp_data = query_prometheus(
-            query=temp_query,
-            start_time=start_time.timestamp(),
-            end_time=end_time.timestamp(),
-            step="5s"
-        )
+            time.sleep(int(range_str))
 
-        if cpu_usage_data or temp_data:
-            print(f"[{end_time}] Appending data to {output_file}")
-            seen_timestamps = append_to_csv(cpu_usage_data, temp_data, output_file, seen_timestamps)
-        else:
-            print(f"[{end_time}] No new data returned from Prometheus.")
-
-        time.sleep(one_minute)
+    except KeyboardInterrupt:
+        print("\nStopped by user. Final data saved to", output_file)
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    import os
     main()

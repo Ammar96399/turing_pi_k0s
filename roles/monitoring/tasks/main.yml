@@ -55,13 +55,13 @@
     {{ helm_binary_path }}
     --kubeconfig {{ k3s_kubeconfig }}
     uninstall {{ prometheus_release_name }}
-    --namespace {{ prometheus_namespace }}
+    --namespace {{ monitoring_namespace }}
   ignore_errors: true
   changed_when: false
 
 - name: Delete monitoring namespace
   ansible.builtin.command: >
-    k0s kubectl --kubeconfig {{ k3s_kubeconfig }} delete namespace {{ prometheus_namespace }}
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }} delete namespace {{ monitoring_namespace }}
   ignore_errors: true
   changed_when: false
 
@@ -76,7 +76,7 @@
   changed_when: false
 
 - name: Create monitoring namespace
-  ansible.builtin.command: "k0s kubectl --kubeconfig {{ k3s_kubeconfig }} create namespace {{ prometheus_namespace }}"
+  ansible.builtin.command: "k0s kubectl --kubeconfig {{ k3s_kubeconfig }} create namespace {{ monitoring_namespace }}"
   register: ns_create
   changed_when: ns_create.rc == 0
   failed_when: ns_create.rc != 0 and "already exists" not in ns_create.stderr
@@ -96,7 +96,7 @@
     {{ helm_binary_path }} upgrade --install {{ prometheus_release_name }}
     {{ prometheus_chart_name }}
     --version {{ prometheus_helm_version }}
-    --namespace {{ prometheus_namespace }}
+    --namespace {{ monitoring_namespace }}
     --kubeconfig {{ k3s_kubeconfig }}
     -f /tmp/prometheus-values.yaml
   register: helm_install_prometheus
@@ -111,6 +111,6 @@
 - name: Wait for Prometheus to be ready
   ansible.builtin.command: >
     k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
-    -n {{ prometheus_namespace }}
+    -n {{ monitoring_namespace }}
     wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus --timeout=300s
   changed_when: false

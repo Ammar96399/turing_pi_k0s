@@ -69,7 +69,6 @@ def process_workload_folders():
 
         time.sleep(WAIT_TIME)
 
-    # Close connection after all messages are sent
     connection.close()
 
     print("Finished publishing all workload folders.")
@@ -86,7 +85,7 @@ if __name__ == "__main__":
     print(f"Waiting time between lines: {WAIT_TIME} seconds")
     try:
         process_workload_folders()
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_3/experiment_end_time.txt")
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_8/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Stopped by user.")
         connection.close()

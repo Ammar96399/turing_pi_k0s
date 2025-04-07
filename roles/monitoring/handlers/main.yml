@@ -4,7 +4,7 @@
     {{ helm_binary_path }} upgrade {{ prometheus_release_name }}
     {{ prometheus_chart_name }}
     --version {{ prometheus_helm_version }}
-    --namespace {{ prometheus_namespace }}
+    --namespace {{ monitoring_namespace }}
     --kubeconfig {{ k3s_kubeconfig }}
     -f /tmp/prometheus-values.yaml
   register: helm_restart_prometheus
@@ -15,7 +15,7 @@
     {{ helm_binary_path }} upgrade {{ grafana_release_name }}
     {{ grafana_chart_name }}
     --version {{ grafana_helm_version }}
-    --namespace {{ prometheus_namespace }}
+    --namespace {{ monitoring_namespace }}
     --kubeconfig {{ k3s_kubeconfig }}
     -f /tmp/grafana-values.yaml
   register: helm_restart_grafana

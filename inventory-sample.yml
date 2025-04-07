@@ -3,11 +3,11 @@ turing_pi_cluster:
   children:
     server:
       hosts:
-        akazem-r2:
+        akazem-r0:
     agent:
       hosts:
-        akazem-r0:
         akazem-r1:
+        akazem-r2:
 
   # Required Vars
   vars:
@@ -16,12 +16,16 @@ turing_pi_cluster:
     k3s_version: v1.32.2+k3s1
     api_endpoint: "{{ hostvars[groups['server'][0]]['ansible_host'] | default(groups['server'][0]) }}"
 
-    one_minute: 10
-    scrape_interval: 5
+    one_minute: 20
+    scrape_interval: 10
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_3"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_8"
     local_user: akazem
-    workload: eventdriven
+    workload: longterm
+    helm_version: "v3.17.0"
+    helm_binary_path: "/usr/local/bin/helm"
+    k3s_kubeconfig: "/home/ubuntu/k0s-kubeconfig.yml"
+    monitoring_namespace: "monitoring"
     # airgap_dir: /tmp/k3s-airgap-images
     # server_config_yaml:   # This should be set if you want to use a custom k3s server config
 
@@ -30,9 +34,9 @@ localhost:
     localhost:
       ansible_connection: local
   vars:
-    one_minute: 10
-    scrape_interval: 5
+    one_minute: 20
+    scrape_interval: 10
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_3"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_8"
     local_user: akazem
-    workload: eventdriven
+    workload: longterm

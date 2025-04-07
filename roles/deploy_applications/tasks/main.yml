@@ -1,7 +1,22 @@
 ---
-- name: Delete {{ workload }}-simulation namespace if it exists
+- name: Delete long-term-simulation namespace if it exists
   ansible.builtin.shell: |
-    k0s kubectl delete namespace {{ workload }}-simulation --ignore-not-found
+    k0s kubectl delete namespace long-term-simulation --ignore-not-found
+  ignore_errors: true
+
+- name: Delete event-driven-simulation namespace if it exists
+  ansible.builtin.shell: |
+    k0s kubectl delete namespace event-driven-simulation --ignore-not-found
+  ignore_errors: true
+
+- name: Delete longterm-simulation namespace if it exists
+  ansible.builtin.shell: |
+    k0s kubectl delete namespace longterm-simulation --ignore-not-found
+  ignore_errors: true
+
+- name: Delete eventdriven-simulation namespace if it exists
+  ansible.builtin.shell: |
+    k0s kubectl delete namespace eventdriven-simulation --ignore-not-found
   ignore_errors: true
 
 - name: Ensure {{ workload }}-simulation namespace exists
