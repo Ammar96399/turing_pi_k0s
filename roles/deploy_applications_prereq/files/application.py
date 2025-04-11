@@ -12,6 +12,9 @@ EXCHANGE = "event_driven_observatory"
 QUEUE_NAME = f"workload_{sys.argv[1]}"
 ONE_MINUTE = int(sys.argv[2])
 
+TOTAL_OUTDATED_MESSAGES = 0
+
+
 def run_stress_ng(value, one_minute):
     command = f"stress-ng --cpu 1 --cpu-method union -t {one_minute}s -l {value}"
     print(f"Running command: {command}")
@@ -22,6 +25,7 @@ def run_stress_ng(value, one_minute):
     else:
         print(stdout.decode('utf-8'))
         
+
 def get_node_model():
     config.load_incluster_config()
     v1 = client.CoreV1Api()
@@ -37,11 +41,14 @@ def get_node_model():
         sys.exit(1)
     return model
 
+
 def treat_outdated_messages():
     while True:
         print("Checking for outdated messages...")
         total = 0
         messages_found = 0
+        finish_message = False
+
         while True: 
             method, _, body = channel.basic_get(queue=QUEUE_NAME, auto_ack=False)
             if method is None:
@@ -49,28 +56,66 @@ def treat_outdated_messages():
             try:
                 payload = body.decode()
                 data = json.loads(payload)
-                total += data.get(get_node_model())
-                messages_found += 1
+                if data.get(get_node_model()) == -1:
+                    print("Finish message received in outdated messages. Ignoring.")
+                    finish_message = True
+                else: 
+                    total += data.get(get_node_model())
+                    messages_found += 1
+                    log_delay(data.get("timestamp"))
                 channel.basic_ack(delivery_tag=method.delivery_tag)
             except ValueError:
                 print(f"Received invalid JSON: {payload}")
 
         processing_time = total / 100.0 * ONE_MINUTE
+
+        if round(processing_time) == 0:
+            processing_time = 1
         
         if messages_found > 0:
-            run_stress_ng(100, processing_time)
-
+            print(f"Total: {total}, Processing time: {processing_time} seconds")
+            run_stress_ng(100, round(processing_time))
+            time.sleep(processing_time)
+            return False
+            
+        if finish_message:
+            time.sleep(processing_time)
+            treat_finish_message()
+            return True
+    
         else:
             print("No outdated messages found.")
-            return
+            return False
+
+
+def log_delay(timestamp):
+    channel.queue_declare(queue=f"{QUEUE_NAME}_delay", durable=True)
+    channel.queue_bind(exchange=EXCHANGE, queue=f"{QUEUE_NAME}_delay", routing_key=f"{QUEUE_NAME}_delay")
+    delay = time.time() - timestamp
+    payload = json.dumps({"delay": delay}).encode()
+    channel.basic_publish(
+        exchange=EXCHANGE,
+        routing_key=f"{QUEUE_NAME}_delay",
+        body=payload,
+        properties=pika.BasicProperties(
+            delivery_mode=2  
+        )
+    )
+    print(f"Delay logged: {delay} seconds")
+
+
 
 def treat_messages():
     def on_message(ch, method, properties, body):
         payload = body.decode()
-        timestamp = int(time.time())
         try:
             data = json.loads(payload)
             ch.basic_ack(delivery_tag=method.delivery_tag)
+            if data.get(get_node_model()) == -1:
+                print("Finish message received. Stopping.")
+                ch.stop_consuming()
+                return
+            log_delay(data.get("timestamp"))
             run_stress_ng(int(data.get(get_node_model())), ONE_MINUTE)
         except json.JSONDecodeError:
             print(f"Received invalid JSON: {payload}")
@@ -78,6 +123,21 @@ def treat_messages():
     channel.basic_qos(prefetch_count=1) 
     channel.basic_consume(queue=QUEUE_NAME, on_message_callback=on_message)
     channel.start_consuming()
+
+
+def treat_finish_message():
+    channel.queue_declare(queue="information", durable=True)
+    channel.queue_bind(exchange=EXCHANGE, queue="information", routing_key="information")
+    payload = json.dumps({"app": QUEUE_NAME, "total": TOTAL_OUTDATED_MESSAGES, "timestamp": time.time()}).encode()
+    channel.basic_publish(
+        exchange=EXCHANGE,
+        routing_key="information",
+        body=payload,
+        properties=pika.BasicProperties(
+            delivery_mode=2  
+        )
+    )
+
 
 if __name__ == "__main__": 
     if len(sys.argv) != 3:
@@ -95,14 +155,19 @@ if __name__ == "__main__":
 
     channel.queue_bind(exchange=EXCHANGE, queue=QUEUE_NAME, routing_key=QUEUE_NAME)
 
-    total = treat_outdated_messages()
+    final_message = treat_outdated_messages()
 
     print(f"Connected to {BROKER}:{PORT}")
-    print("Waiting for messages... (Press CTRL+C to exit)")
     try:
-        treat_messages()
+        if final_message:
+            print("Finish message received. Stopping.")
+            channel.stop_consuming()
+        else:
+            print("Waiting for messages... (Press CTRL+C to exit)")
+            treat_messages()
     except KeyboardInterrupt:
         print("Stopped by user.")
         channel.stop_consuming()
     finally:
+        treat_finish_message()
         connection.close()

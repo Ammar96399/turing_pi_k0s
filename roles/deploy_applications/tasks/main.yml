@@ -1,27 +1,12 @@
 ---
-- name: Delete long-term-simulation namespace if it exists
+- name: Delete simulation namespace if it exists
   ansible.builtin.shell: |
-    k0s kubectl delete namespace long-term-simulation --ignore-not-found
+    k0s kubectl delete namespace simulation --ignore-not-found
   ignore_errors: true
 
-- name: Delete event-driven-simulation namespace if it exists
+- name: Ensure simulation namespace exists
   ansible.builtin.shell: |
-    k0s kubectl delete namespace event-driven-simulation --ignore-not-found
-  ignore_errors: true
-
-- name: Delete longterm-simulation namespace if it exists
-  ansible.builtin.shell: |
-    k0s kubectl delete namespace longterm-simulation --ignore-not-found
-  ignore_errors: true
-
-- name: Delete eventdriven-simulation namespace if it exists
-  ansible.builtin.shell: |
-    k0s kubectl delete namespace eventdriven-simulation --ignore-not-found
-  ignore_errors: true
-
-- name: Ensure {{ workload }}-simulation namespace exists
-  ansible.builtin.shell: |
-    k0s kubectl create namespace {{ workload }}-simulation --dry-run=client -o yaml | k0s kubectl apply -f -
+    k0s kubectl create namespace simulation --dry-run=client -o yaml | k0s kubectl apply -f -
   ignore_errors: true
 
 - name: Create ServiceAccount for node label access
@@ -31,7 +16,7 @@
     kind: ServiceAccount
     metadata:
       name: node-reader
-      namespace: {{ workload }}-simulation
+      namespace: simulation
     EOF
   register: sa_result
   failed_when: sa_result.rc != 0
@@ -61,7 +46,7 @@
     subjects:
     - kind: ServiceAccount
       name: node-reader
-      namespace: {{ workload }}-simulation
+      namespace: simulation
     roleRef:
       kind: ClusterRole
       name: node-reader
@@ -70,7 +55,7 @@
   register: crb_result
   failed_when: crb_result.rc != 0
 
-- name: Run Jobs for multiple workload numbers in {{ workload }}-simulation namespace
+- name: Run Jobs for multiple workload numbers in simulation namespace
   ansible.builtin.shell: |
     python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_request.py {{ workload_number }} > /tmp/request;
     python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_limit.py {{ workload_number }} > /tmp/limit;
@@ -81,10 +66,10 @@
     kind: Job
     metadata:
       name: application-simulator-{{ workload_number }}
-      namespace: {{ workload }}-simulation
+      namespace: simulation
     spec:
-      ttlSecondsAfterFinished: 10
-      backoffLimit: 6
+      # ttlSecondsAfterFinished: 10
+      backoffLimit: 20
       template:
         spec:
           serviceAccountName: node-reader
@@ -106,11 +91,11 @@
                 limits:
                   cpu: "${LIMIT}"
           restartPolicy: OnFailure
-          tolerations:
-            - key: "node-role.kubernetes.io/not-ready"
-              operator: "Exists"
-              effect: "NoExecute"
-              tolerationSeconds: 1
+          # tolerations:
+          #   - key: "node-role.kubernetes.io/not-ready"
+          #     operator: "Exists"
+          #     effect: "NoExecute"
+          #     tolerationSeconds: 1
     EOF
   loop: "{{ range(1, 57) | list }}"
   loop_control:

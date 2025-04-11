@@ -1,4 +1,11 @@
 ---
+- name: Emulation preparation
+  hosts: turing_pi_cluster
+  gather_facts: true
+  become: true
+  roles: 
+    - role: emulation_preparation
+    
 - name: Setup monitoring
   hosts: server
   gather_facts: true

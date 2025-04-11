@@ -6,8 +6,6 @@ from pathlib import Path
 import sys
 import glob
 
-
-
 # Command-line arguments
 OBSERVATORY = str(sys.argv[1]) if len(sys.argv) > 1 else "event_driven_observatory"
 WAIT_TIME = int(sys.argv[2]) if len(sys.argv) > 2 else 60
@@ -35,7 +33,7 @@ def publish_cpu_load(csv_file, folder_name, minute):
         cm4_cpu = float(reader[minute]["cm4"]) * 100
         rk1_cpu = float(reader[minute]["rk1"]) * 100
 
-        payload = json.dumps({"cm4": cm4_cpu, "rk1": rk1_cpu, "timestamp": int(time.time())}).encode()
+        payload = json.dumps({"cm4": cm4_cpu, "rk1": rk1_cpu, "timestamp": time.time()}).encode()
 
         # Routing key is the folder name (e.g., "workload_1")
         routing_key = folder_name
@@ -46,28 +44,43 @@ def publish_cpu_load(csv_file, folder_name, minute):
             routing_key=routing_key,
             body=payload,
             properties=pika.BasicProperties(
-                delivery_mode=2  # Persistent message
+                delivery_mode=2 
             )
         )
 
         print(f"Published: {EXCHANGE}/{routing_key} -> cm4: {cm4_cpu}%, rk1: {rk1_cpu}%")
 
 def process_workload_folders():
-    for minute in range(1, 1442):  # 1440 minutes = 1 day + header row
-        for i in range(1, 57):  # workload_1 to workload_56
-            folder_name = f"workload_{i}"
-            folder_path = Path(BASE_PATH) / folder_name / "turing_pi"
+    for minute in range(1, 1443):  # 1440 minutes = 1 day + header row + finish message
+        if minute == 1442:
+            print("Sensing a finish message...")
+            for i in range(1, 57):  # workload_1 to workload_56
+                folder_name = f"workload_{i}"
+                folder_path = Path(BASE_PATH) / folder_name / "turing_pi"
+                payload = json.dumps({"cm4": -1, "rk1": -1, "timestamp": time.time()}).encode()
+                channel.basic_publish(
+                    exchange=EXCHANGE,
+                    routing_key=folder_name,
+                    body=payload,
+                    properties=pika.BasicProperties(
+                        delivery_mode=2  
+                    )
+                )
+        else: 
+            for i in range(1, 57):  # workload_1 to workload_56
+                folder_name = f"workload_{i}"
+                folder_path = Path(BASE_PATH) / folder_name / "turing_pi"
 
-            csv_files = glob.glob(str(folder_path / "*.csv"))
-            if not csv_files:
-                print(f"Warning: No CSV found in {folder_path}")
-                continue
+                csv_files = glob.glob(str(folder_path / "*.csv"))
+                if not csv_files:
+                    print(f"Warning: No CSV found in {folder_path}")
+                    continue
 
-            csv_file = csv_files[0]
-            print(f"Processing {csv_file} (Folder: {folder_name})")
-            publish_cpu_load(csv_file, folder_name, minute)
+                csv_file = csv_files[0]
+                print(f"Processing {csv_file} (Folder: {folder_name})")
+                publish_cpu_load(csv_file, folder_name, minute)
 
-        time.sleep(WAIT_TIME)
+            time.sleep(WAIT_TIME)
 
     connection.close()
 
@@ -77,7 +90,7 @@ def log_unix_time(file_path):
     log_file_path = Path(file_path)
     log_file_path.parent.mkdir(parents=True, exist_ok=True)  # Create parent directories if they don't exist
     with open(log_file_path, "a") as log_file:  # Open in append mode to create the file if it doesn't exist
-        log_file.write(f"{int(time.time())}\n")
+        log_file.write(f"{time.time()}\n")
 
 if __name__ == "__main__":
     print(f"Base path: {BASE_PATH}")
@@ -85,7 +98,7 @@ if __name__ == "__main__":
     print(f"Waiting time between lines: {WAIT_TIME} seconds")
     try:
         process_workload_folders()
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_8/experiment_end_time.txt")
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/event_driven/test_3/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Stopped by user.")
         connection.close()

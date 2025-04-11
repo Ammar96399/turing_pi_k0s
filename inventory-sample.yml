@@ -16,10 +16,10 @@ turing_pi_cluster:
     k3s_version: v1.32.2+k3s1
     api_endpoint: "{{ hostvars[groups['server'][0]]['ansible_host'] | default(groups['server'][0]) }}"
 
-    one_minute: 20
-    scrape_interval: 10
+    one_minute: 16
+    scrape_interval: 8
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_8"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/event_driven/test_3"
     local_user: akazem
     workload: longterm
     helm_version: "v3.17.0"
@@ -34,9 +34,9 @@ localhost:
     localhost:
       ansible_connection: local
   vars:
-    one_minute: 20
-    scrape_interval: 10
+    one_minute: 16
+    scrape_interval: 8
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/test_8"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/event_driven/test_3"
     local_user: akazem
     workload: longterm

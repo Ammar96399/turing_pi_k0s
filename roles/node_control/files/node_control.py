@@ -145,11 +145,22 @@ def turn_off_node(ip) -> bool:
     try:
         if node.role != NodeRole.MASTER:
             evict_node(ip)
+            # command = ["sudo", "ssh", "ubuntu@", ip, "sudo", "shutdown", "now"]
+            # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # stdout, stderr = process.communicate()
+            # if process.returncode == 0:
+            #     logger.info(f"Node {node_id} turned off successfully. Output: {stdout}")
+            # else:
+            #     logger.error(f"Failed to turn off node {node_id}. Error: {stderr}")
             node_id = node.id
             command = ["ssh", "root@131.254.100.14", "tpi", "power", "--node", str(node_id), "off"]
-            result = subprocess.call(command, text=True)
-            node.status = NodeStatus.OFF
-            logger.info(f"Node {node_id} turned off successfully. Output: {result}")
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate()
+            if process.returncode == 0:
+                node.status = NodeStatus.OFF
+                logger.info(f"Node {node_id} turned off successfully. Output: {stdout}")
+            else:
+                logger.error(f"Failed to turn off node {node_id}. Error: {stderr}")
             return True
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to turn off node {node_id}. Error: {e.stderr}")
@@ -166,7 +177,6 @@ def turn_on_node() -> bool:
                 # Wait for the node to join the k0s cluster
                 master_node = get_master_node()
                 if master_node:
-                    master_ip = master_node.ip
                     kube_name = node.kube_name
                     join_command = ["sudo", "k0s", "kubectl", "get", "nodes", kube_name, "-o", "jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"]
                     for _ in range(60):
@@ -182,6 +192,7 @@ def turn_on_node() -> bool:
                         logger.warning(f"Node {node_id} did not join the k0s cluster within the timeout period.")
                 uncordon_command = ["sudo", "k0s", "kubectl", "uncordon", kube_name]
                 subprocess.run(uncordon_command, text=True)
+                subprocess.run(["sudo", "k0s", "kubectl", "create", "job", "--from=cronjob/descheduler", "descheduler-node-control", "-n", "kube-system"], text=True)
                 node.status = NodeStatus.ON
                 logger.info(f"Node {node_id} turned on successfully. Output: {result}")
                 return True
@@ -216,15 +227,10 @@ def get_master_node() -> Node:
 
 def evict_node(ip) -> bool: 
     node = get_node_by_ip(ip)
-    if get_master_node():
-        master_ip = get_master_node().ip
-    else:
-        logger.error("No master node found.")
-        return False
     
     if node:
         command = ["sudo", "k0s", "kubectl", "drain", 
-                   node.kube_name, 
+                   node.kube_name,
                    "--ignore-daemonsets", 
                    "--force", 
                    "--delete-emptydir-data"]
@@ -232,12 +238,14 @@ def evict_node(ip) -> bool:
         logger.info(f"Evicting node {node.ip} with ID {node.id}, with command: {command}")
 
         try:
-            result = subprocess.call(command, text=True)
-            if result == 0:
-                logger.info(f"Command executed successfully with result code: {result}")
+            result = subprocess.run(command, text=True, capture_output=True)
+            if result.returncode == 0:
+                logger.info(f"Command executed successfully with result code: {result.returncode}")
                 return True
             else:
-                logger.warning(f"Command executed with a non-zero result code: {result}")
+                logger.warning(f"Command executed with result code: {result.returncode}")
+                logger.warning(f"stdout: {result.stdout}")
+                logger.warning(f"stderr: {result.stderr}")
                 return False
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to evict node {node.ip}. Error: {e.stderr}")

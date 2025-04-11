@@ -41,13 +41,13 @@ deschedulerPolicy:
             metricsUtilization:
               metricsServer: true
             thresholds:
-              cpu: {{ min_threshold }}
-              memory: {{ min_threshold }}
-              pods: {{ min_threshold }}
+              cpu: 60
+              memory: 60
+              pods: 60
             targetThresholds:
-              cpu: {{ max_threshold }}
-              memory: {{ max_threshold }}
-              pods: {{ max_threshold }}
+              cpu: 70
+              memory: 70
+              pods: 70
             evictionLimits:
               node: 30
             metricsUtilization:
