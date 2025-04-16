@@ -98,7 +98,7 @@ if __name__ == "__main__":
     print(f"Waiting time between lines: {WAIT_TIME} seconds")
     try:
         process_workload_folders()
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/event_driven/test_3/experiment_end_time.txt")
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/long_term/test_2/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Stopped by user.")
         connection.close()
