@@ -19,7 +19,7 @@ turing_pi_cluster:
     one_minute: 16
     scrape_interval: 8
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/long_term/test_2"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/event_driven/test_5"
     local_user: akazem
     workload: longterm
     helm_version: "v3.17.0"
@@ -37,6 +37,6 @@ localhost:
     one_minute: 16
     scrape_interval: 8
     playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/long_term/test_2"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/event_driven/test_5"
     local_user: akazem
     workload: longterm

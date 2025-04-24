@@ -75,7 +75,7 @@ def treat_outdated_messages():
         if messages_found > 0:
             print(f"Total: {total}, Processing time: {processing_time} seconds")
             run_stress_ng(100, round(processing_time))
-            time.sleep(processing_time)
+            time.sleep(processing_time) # Wait for the stress-ng command to finish
             return False
             
         if finish_message:
@@ -104,19 +104,18 @@ def log_delay(timestamp):
     print(f"Delay logged: {delay} seconds")
 
 
-
 def treat_messages():
     def on_message(ch, method, properties, body):
         payload = body.decode()
         try:
             data = json.loads(payload)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
             if data.get(get_node_model()) == -1:
+                ch.basic_ack(delivery_tag=method.delivery_tag) 
                 print("Finish message received. Stopping.")
                 ch.stop_consuming()
                 return
-            log_delay(data.get("timestamp"))
-            run_stress_ng(int(data.get(get_node_model())), ONE_MINUTE)
+            run_stress_ng(int(data.get(get_node_model())), ONE_MINUTE) 
+            ch.basic_ack(delivery_tag=method.delivery_tag) # Acknowledge the message only after processing in case of interruption
         except json.JSONDecodeError:
             print(f"Received invalid JSON: {payload}")
 

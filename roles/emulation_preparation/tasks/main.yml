@@ -1,4 +1,7 @@
-# - name: Reboot nodes
-#   ansible.builtin.reboot:
-#     reboot_timeout: 300
-#   become: true
+- name: Uncordon nodes
+  ansible.builtin.shell: |
+    k0s kubectl uncordon rk1-1
+    k0s kubectl uncordon rpi2
+  register: uncordon_result
+  failed_when: uncordon_result.rc != 0
+  changed_when: uncordon_result.rc == 0

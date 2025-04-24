@@ -1,7 +1,10 @@
+import csv
 import logging
 from collections import deque
+import os
 import sys
 from time import sleep
+import time
 import requests
 from enum import Enum
 import subprocess
@@ -72,11 +75,11 @@ STATE = [
     )
 ]
 
-def get_node_by_ip(ip):
+def get_node_by_ip(ip) -> Node:
     for node in STATE:
         if node.ip == ip:
             return node
-    return None
+    raise ValueError(f"No node found with IP: {ip}")
 
 def number_of_nodes_on():
     count = 0
@@ -84,6 +87,38 @@ def number_of_nodes_on():
         if node.status == NodeStatus.ON:
             count += 1
     return count
+
+
+# Add this function to log the state of the cluster to a CSV file
+def log_cluster_state_to_csv():
+    csv_file = "cluster_state_log.csv"
+    fieldnames = ["timestamp", "ip", "id", "type", "role", "status", "kube_name"]
+
+    try:
+        # Check if the file exists to determine if we need to write the header
+        write_header = not os.path.exists(csv_file)
+
+        with open(csv_file, mode="a", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+
+            if write_header:
+                writer.writeheader()
+
+            timestamp = time.time()
+            for node in STATE:
+                writer.writerow({
+                    "timestamp": timestamp,
+                    "ip": node.ip,
+                    "id": node.id,
+                    "type": node.type.value,
+                    "role": node.role.value,
+                    "status": node.status.value,
+                    "kube_name": node.kube_name
+                })
+        logger.info("Cluster state logged to CSV file.")
+    except Exception as e:
+        logger.error(f"Failed to log cluster state to CSV. Error: {e}")
+
 
 def query_prometheus(node: Node, range_str):
     cpu_query = f'100 * (1 - avg(rate(node_cpu_seconds_total{{mode="idle", instance="{node.ip}:9100"}}[{range_str}s])))'
@@ -116,7 +151,7 @@ def determine_action(history, window_size, min_threshold, max_threshold):
     logger.info(f"Newest values sum: {newest_values_sum}")
 
     for ip, values in history.items():
-        node = get_node_by_ip(ip)
+        node: Node = get_node_by_ip(ip)
         if node.status == NodeStatus.OFF:
             logger.info(f"Node {ip} is off. Skipping action.")
             continue
@@ -132,16 +167,18 @@ def determine_action(history, window_size, min_threshold, max_threshold):
             if newest_values_sum * 1.1 < (number_of_nodes_on() * 100): 
                 action_taken = turn_off_node(ip)
                 if action_taken:
+                    log_cluster_state_to_csv()
                     clear_history(history)
         elif all(v > max_threshold for v in values):
             action_taken = turn_on_node()
             if action_taken:
+                log_cluster_state_to_csv()
                 clear_history(history)
         else:   
             logger.info(f"Node {ip} is in a normal state. No action required.")
 
 def turn_off_node(ip) -> bool:
-    node = get_node_by_ip(ip)
+    node: Node = get_node_by_ip(ip)
     try:
         if node.role != NodeRole.MASTER:
             evict_node(ip)
@@ -223,7 +260,7 @@ def get_master_node() -> Node:
     for node in STATE:
         if node.role == NodeRole.MASTER:
             return node
-    return None
+    raise ValueError("No master node found in the cluster.")
 
 def evict_node(ip) -> bool: 
     node = get_node_by_ip(ip)
