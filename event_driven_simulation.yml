@@ -13,7 +13,7 @@
   roles:
     - role: monitoring
 
-- name: Prepare event term simulation
+- name: Prepare long term simulation
   hosts: turing_pi_cluster
   gather_facts: true
   become: true
@@ -26,7 +26,15 @@
   roles:
     - role: system_measurements
 
-- name: Run event term simulation
+- name: Prepare injecting workloads
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: workloads_injector_prep
+  vars:
+    observatory: "event_driven_observatory"
+
+- name: Run long term simulation
   hosts: server
   gather_facts: true
   become: true
@@ -45,9 +53,9 @@
   hosts: server
   gather_facts: true
   become: true
-  roles:
+  roles:    
     - role: node_control
   vars:
     window_size: 20
     min_threshold: 40
-    max_threshold: 70
+    max_threshold: 90

@@ -4,6 +4,22 @@
     k0s kubectl delete namespace simulation --ignore-not-found
   ignore_errors: true
 
+# - name: Cordon nodes
+#   ansible.builtin.shell: |
+#     k0s kubectl cordon rk1-1
+#     k0s kubectl cordon rpi2
+#   register: uncordon_result
+#   failed_when: uncordon_result.rc != 0
+#   changed_when: uncordon_result.rc == 0
+
+# - name: Turn off nodes
+#   ansible.builtin.shell: |
+#     ssh root@131.254.100.14 tpi power --node 3 off
+#     ssh root@131.254.100.14 tpi power --node 2 off
+#   register: drain_result
+#   failed_when: drain_result.rc != 0
+#   changed_when: drain_result.rc == 0
+
 - name: Ensure simulation namespace exists
   ansible.builtin.shell: |
     k0s kubectl create namespace simulation --dry-run=client -o yaml | k0s kubectl apply -f -
@@ -91,11 +107,6 @@
                 limits:
                   cpu: "${LIMIT}"
           restartPolicy: OnFailure
-          # tolerations:
-          #   - key: "node-role.kubernetes.io/not-ready"
-          #     operator: "Exists"
-          #     effect: "NoExecute"
-          #     tolerationSeconds: 1
     EOF
   loop: "{{ range(1, 57) | list }}"
   loop_control:

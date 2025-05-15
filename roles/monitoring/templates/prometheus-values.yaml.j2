@@ -20,21 +20,15 @@ server:
   nodeSelector:
     role: server
 
-prometheus:
-  prometheusSpec:
-    scrape_interval: "{{ scrape_interval }}s"
-    evaluation_interval: "{{ scrape_interval }}s"
-    scrape_timeout: "{{ scrape_interval }}s"
-
-nodeExporter:
+prometheus-node-exporter:
   enabled: true
   resources:
     requests:
-      memory: "32Mi"
-      cpu: "50m"
+      memory: "512Mi"
+      cpu: "100m"
     limits:
-      memory: "64Mi"
-      cpu: "200m"
-
+      memory: "1024Mi"
+      cpu: "500m"
+  
 alertmanager:
   enabled: false

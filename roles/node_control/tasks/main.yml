@@ -24,13 +24,20 @@
 
 - name: Run the node_control script
   ansible.builtin.shell: |
-    timeout {{ 1440 * one_minute + 1200 }}s python3 /home/{{ ansible_user }}/simulation/node_control.py {{ one_minute }} {{ window_size }} {{ min_threshold }} {{ max_threshold }} & echo $! > /home/{{ ansible_user }}/simulation/node_control_pid.txt
+    python3 /home/{{ ansible_user }}/simulation/node_control.py {{ one_minute }} {{ window_size }} {{ min_threshold }} {{ max_threshold }} & echo $! > /home/{{ ansible_user }}/simulation/node_control_pid.txt
   args:
     chdir: "/home/{{ ansible_user }}/simulation/"
   register: script_result
   failed_when: script_result.rc != 0
   changed_when: false
 
+- name: Delete existing Descheduler job if present
+  ansible.builtin.command: >
+    k0s kubectl delete job -n {{ descheduler_namespace }} -l "app.kubernetes.io/name={{ descheduler_release_name }}"
+  ignore_errors: true
+  changed_when: false
+  become: true
+  
 - name: Copy Descheduler custom values file
   ansible.builtin.template:
     src: "descheduler-values.yaml.j2"
