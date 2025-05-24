@@ -57,5 +57,5 @@
     - role: node_control
   vars:
     window_size: 20
-    min_threshold: 50
+    min_threshold: 40
     max_threshold: 90

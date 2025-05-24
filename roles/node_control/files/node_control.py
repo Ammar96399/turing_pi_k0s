@@ -136,9 +136,13 @@ class Node:
                     break
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error checking node {self.id} join status: {e.stderr}")
+                logger.info(f"Turing off node {self.id} due to join failure.")
+                self.turn_off()
                 sleep(1)
         else:
             logger.warning(f"Node {self.id} did not join the k0s cluster within the timeout period.")
+            logger.info(f"Turing off node {self.id} due to join failure.")
+            self.turn_off()
 
         
 class Cluster:  
@@ -228,10 +232,11 @@ class Cluster:
         logger.info("Cleared history of all nodes.")
     
     def trigger_descheduler(self):
+        logger.info("Triggering descheduler job.")
         subprocess.run([
             "sudo", "k0s", "kubectl", "create", "job", 
             "--from=cronjob/descheduler", 
-            f"descheduler-node-control-{int(time.time())}",  # unique job name
+            f"descheduler-node-control-{int(time.time())}",
             "-n", "kube-system"
         ], text=True)
     
@@ -242,7 +247,7 @@ class Cluster:
         logger.info("Scaling up the cluster.")
         if self.all_nodes_on():
             logger.info("All nodes are already on. No scaling up required.")
-            return
+            return False
         
         if largest_node.status == NodeStatus.OFF:
             largest_node.turn_on()
@@ -250,7 +255,8 @@ class Cluster:
             largest_node.uncordon_node()
             self.trigger_descheduler()
             self.clear_history()
-            return
+            self.log_cluster_state_to_csv()
+            return True
         
         if smallest_node.status == NodeStatus.OFF:
             smallest_node.turn_on()
@@ -258,7 +264,8 @@ class Cluster:
             smallest_node.uncordon_node()
             self.trigger_descheduler()
             self.clear_history()
-            return
+            self.log_cluster_state_to_csv()
+            return True
     
     def scale_down(self):
         smallest_node =  self.get_worker_node_by_type(NodeType.CM4)
@@ -272,11 +279,13 @@ class Cluster:
             smallest_node.evict()
             smallest_node.turn_off()
             self.clear_history()
+            self.log_cluster_state_to_csv()
             return
         if largest_node.status == NodeStatus.ON:
             largest_node.evict()
             largest_node.turn_off()
             self.clear_history()
+            self.log_cluster_state_to_csv()
             return
         
     def log_cluster_state_to_csv(self):
@@ -377,11 +386,23 @@ def main():
 
     logger.info(f"Initial state of the nodes: {cluster.nodes}")
 
+    scaled_up = False
+
+    cluster.log_cluster_state_to_csv()
+
     while True: 
 
         prometheus_values = {}
         newest_sum = 0.0
         nb_nodes_on = cluster.get_number_of_nodes_on()
+
+        if scaled_up:
+            logger.info("Waiting for nodes to stabilize after scaling up. Sleeping for 160 seconds.")
+            sleep(60)
+            cluster.trigger_descheduler()
+            sleep(100)
+            scaled_up = False
+            cluster.trigger_descheduler()
 
         for node in cluster.nodes:
             cpu_usage = query_prometheus(node, range)
@@ -400,14 +421,21 @@ def main():
         if cluster.history_state == HistoryState.UNBALANCED:
             logger.info("Cluster is unbalanced. Taking action.")
             cluster.trigger_descheduler()
+            cluster.clear_history()
         
         elif cluster.history_state == HistoryState.UNDERLOADED and (newest_sum * 1.1 < (nb_nodes_on - 1) * 100):
             logger.info("Cluster is underloaded. Taking action.")
             cluster.scale_down()
 
+        elif cluster.history_state == HistoryState.UNDERLOADED:
+            logger.info("Cluster is unbalanced. Taking action.")
+            cluster.trigger_descheduler()
+            cluster.clear_history()
+
         elif cluster.history_state == HistoryState.OVERLOADED:
             logger.info("Cluster is overloaded. Taking action.")
-            cluster.scale_up()
+            if cluster.scale_up(): 
+                scaled_up = True
 
         elif cluster.history_state == HistoryState.NORMAL:
             logger.info("Cluster is in a normal state. No action required.")

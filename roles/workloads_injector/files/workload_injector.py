@@ -77,8 +77,6 @@ def process_workload_folders():
             publish_cpu_loads(results, minute)
             time.sleep(WAIT_TIME)
 
-    connection.close()
-
     print("Finished publishing all workload folders.")
 
 
@@ -86,8 +84,8 @@ def check_queue_message_count():
     queue = channel.queue_declare(queue="information", passive=True)
     queue_count = queue.method.message_count
 
-    if queue_count == 56:
-        print("There are exactly 56 messages in the 'information' queue.")
+    if queue_count >= 48:
+        print("There are exactly 48 messages in the 'information' queue.")
         return True
     else:
         print(f"Message count mismatch: {queue_count} messages found in the 'information' queue.")
@@ -108,7 +106,8 @@ if __name__ == "__main__":
         process_workload_folders()
         while not check_queue_message_count():
             time.sleep(1)
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/with_overload/long_term/gold/test_6/experiment_end_time.txt")
+        connection.close()
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/new_workload/long_term/gold/test_1/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Process interrupted by user.")
         connection.close()

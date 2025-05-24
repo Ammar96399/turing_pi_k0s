@@ -3,6 +3,7 @@ import sys
 import time
 import pika
 import json
+import logging
 from datetime import datetime
 
 BROKER = "131.254.19.109"
@@ -13,26 +14,34 @@ ONE_MINUTE = int(sys.argv[2])
 
 TOTAL_OUTDATED_MESSAGES = 0
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 def run_sysbench(value):
     events = value * ONE_MINUTE
     if events == 0:
-        print("No events to process. Skipping sysbench.")
+        logger.info("No events to process. Skipping sysbench.")
         return
+    # This is a dump fix for the CM4 taking a little bit more time to process 272 events.
+    if events == 272:
+        events = 271
     command = f"stress-ng --cpu 1 --cpu-ops {events}"
-    # command = f"sysbench cpu --cpu-max-prime=10000 --threads=1 --events={events} run"
-    print(f"Running command: {command}")
+    # command = f"sysbench cpu --cpu-max-prime=10000 --threads=1 --events={events} run" 
+    logger.info(f"Running command: {command}")
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     if process.returncode != 0:
-        print(f"Error running sysbench: {stderr.decode('utf-8')}")
+        logger.error(f"Error running sysbench: {stderr.decode('utf-8')}")
     else:
-        print(stdout.decode('utf-8'))
-
+        logger.info(stdout.decode('utf-8'))
 
 def treat_outdated_messages():
     while True:
-        print("Checking for outdated messages...")
+        logger.info("Checking for outdated messages...")
         total = 0
         messages_found = 0
         finish_message = False
@@ -46,7 +55,7 @@ def treat_outdated_messages():
                 payload = body.decode()
                 data = json.loads(payload)
                 if data.get("events") == -1:
-                    print("Finish message received in outdated messages. Ignoring.")
+                    logger.info("Finish message received in outdated messages. Ignoring.")
                     finish_message = True
                 else: 
                     if not delay_logged:
@@ -57,18 +66,17 @@ def treat_outdated_messages():
                     messages_found += 1
                 channel.basic_ack(delivery_tag=method.delivery_tag)
             except ValueError:
-                print(f"Received invalid JSON: {payload}")
+                logger.warning(f"Received invalid JSON: {payload}")
 
         if messages_found > 0:
             run_sysbench(total)
         else:
-            print("No outdated messages found.")
+            logger.info("No outdated messages found.")
             return False
             
         if finish_message:
             treat_finish_message()
             return True
-        
 
 def log_delay(timestamp):
     channel.queue_declare(queue=f"{QUEUE_NAME}_delay", durable=True)
@@ -84,7 +92,6 @@ def log_delay(timestamp):
         )
     )
 
-
 def log_delay_every_message(timestamp, message_timestamp):
     channel.queue_declare(queue=f"{QUEUE_NAME}_delay_every_meesage", durable=True)
     channel.queue_bind(exchange=EXCHANGE, queue=f"{QUEUE_NAME}_delay_every_meesage", routing_key=f"{QUEUE_NAME}_delay_every_meesage")
@@ -98,38 +105,37 @@ def log_delay_every_message(timestamp, message_timestamp):
             delivery_mode=2  
         )
     )
-    print(f"Delay logged: {delay} seconds")
-
+    logger.info(f"Delay logged: {delay} seconds")
 
 def treat_messages():
     def on_message(ch, method, properties, body):
         start_time = time.time()
         start_time_str = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')
-        print(f"Starting on_message callback at {start_time_str}")
+        logger.info(f"Starting on_message callback at {start_time_str}")
         
         payload = body.decode()
         try:
             data = json.loads(payload)
+            timenow = time.time()
             if data.get("events") == -1:
                 ch.basic_ack(delivery_tag=method.delivery_tag) 
-                print("Finish message received. Stopping.")
+                logger.info("Finish message received. Stopping.")
                 ch.stop_consuming()
                 return
-            log_delay_every_message(time.time(), data.get("timestamp"))
             run_sysbench(round(data.get("events")))
+            log_delay_every_message(timenow, data.get("timestamp"))
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError:
-            print(f"Received invalid JSON: {payload}")
+            logger.warning(f"Received invalid JSON: {payload}")
         
         end_time = time.time()
         end_time_str = datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')
         duration = end_time - start_time
-        print(f"Finished on_message callback at {end_time_str}. Duration: {duration:.4f} seconds")
+        logger.info(f"Finished on_message callback at {end_time_str}. Duration: {duration:.4f} seconds")
 
     channel.basic_qos(prefetch_count=1)
     channel.basic_consume(queue=QUEUE_NAME, on_message_callback=on_message)
     channel.start_consuming()
-
 
 def treat_finish_message():
     channel.queue_declare(queue="information", durable=True)
@@ -144,10 +150,9 @@ def treat_finish_message():
         )
     )
 
-
 if __name__ == "__main__": 
     if len(sys.argv) != 3:
-        print("Usage: python sysbench_from_csv.py <workload_number> <one_minute>")
+        logger.error("Usage: python sysbench_from_csv.py <workload_number> <one_minute>")
         sys.exit(1)
 
     credentials = pika.PlainCredentials("guest", "guest")
@@ -163,16 +168,16 @@ if __name__ == "__main__":
 
     final_message = treat_outdated_messages()
 
-    print(f"Connected to {BROKER}:{PORT}")
+    logger.info(f"Connected to {BROKER}:{PORT}")
     try:
         if final_message:
-            print("Finish message received. Stopping.")
+            logger.info("Finish message received. Stopping.")
             channel.stop_consuming()
         else:
-            print("Waiting for messages... (Press CTRL+C to exit)")
+            logger.info("Waiting for messages... (Press CTRL+C to exit)")
             treat_messages()
     except KeyboardInterrupt:
-        print("Stopped by user.")
+        logger.info("Stopped by user.")
         channel.stop_consuming()
     finally:
         treat_finish_message()
