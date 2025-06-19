@@ -81,6 +81,7 @@ class Node:
         if result == 0:
             self.status = NodeStatus.ON
             logger.info(f"Node {self.id} turned on successfully. Current status: {self.status}")
+            return True
         else:
             logger.error(f"Failed to turn on node {self.id}. Error code: {result}")
             return False
@@ -91,8 +92,10 @@ class Node:
         if result == 0:
             self.status = NodeStatus.OFF
             logger.info(f"Node {self.id} turned off successfully. Current status: {self.status}")
+            return True
         else:
             logger.error(f"Failed to turn off node {self.id}. Error code: {result}")
+            return False
 
     def evict(self):
         command = ["sudo", "k0s", "kubectl", "drain", 
@@ -126,23 +129,25 @@ class Node:
         self.history_state = HistoryState.NORMAL
     
     def wait_for_join(self):
-        for _ in range(60):
+        for _ in range(120):
             try:
                 join_command = ["sudo", "k0s", "kubectl", "get", "nodes", self.kube_name, "-o", "jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"]
 
                 result = subprocess.run(join_command, text=True, capture_output=True)
                 if result.stdout.strip() == "'True'":
                     logger.info(f"Node {self.id} successfully joined the k0s cluster.")
-                    break
+                    return True
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error checking node {self.id} join status: {e.stderr}")
                 logger.info(f"Turing off node {self.id} due to join failure.")
                 self.turn_off()
-                sleep(1)
+                return False
         else:
             logger.warning(f"Node {self.id} did not join the k0s cluster within the timeout period.")
             logger.info(f"Turing off node {self.id} due to join failure.")
             self.turn_off()
+            return False 
+        
 
         
 class Cluster:  
@@ -188,6 +193,13 @@ class Cluster:
             if node.type == type and node.role == NodeRole.WORKER:
                 return node
         raise ValueError(f"No worker node found with type: {type}")
+
+    def get_current_cpu_sum(self):
+        cpu_sum = 0.0
+        for node in self.nodes:
+            if node.status == NodeStatus.ON and node.history:
+                cpu_sum += node.history[-1]
+        return cpu_sum
     
     def get_number_of_nodes_on(self):
         count = 0
@@ -250,22 +262,22 @@ class Cluster:
             return False
         
         if largest_node.status == NodeStatus.OFF:
-            largest_node.turn_on()
-            largest_node.wait_for_join()
+            result = largest_node.turn_on()
+            result = result and largest_node.wait_for_join()
             largest_node.uncordon_node()
             self.trigger_descheduler()
             self.clear_history()
             self.log_cluster_state_to_csv()
-            return True
+            return result
         
         if smallest_node.status == NodeStatus.OFF:
-            smallest_node.turn_on()
-            smallest_node.wait_for_join()
+            result = smallest_node.turn_on()
+            result = result and smallest_node.wait_for_join()
             smallest_node.uncordon_node()
             self.trigger_descheduler()
             self.clear_history()
             self.log_cluster_state_to_csv()
-            return True
+            return result
     
     def scale_down(self):
         smallest_node =  self.get_worker_node_by_type(NodeType.CM4)
@@ -327,7 +339,7 @@ def query_prometheus(node: Node, range_str):
         logger.error(f"Invalid range_str: {range_str}")
         return 0.0
 
-    query = f'100 * (1 - avg(rate(node_cpu_seconds_total{{mode="idle", instance="{node.ip}:9100"}}[{range_str * 2}s])))'
+    query = f'100 * (1 - avg(rate(node_cpu_seconds_total{{mode="idle", instance="{node.ip}:9100"}}[{range_str}s])))'
     params = {
         "query": query
     }
@@ -392,7 +404,8 @@ def main():
 
     while True: 
 
-        prometheus_values = {}
+        prometheus_values_1 = {}
+        prometheus_values_2 = {}
         newest_sum = 0.0
         nb_nodes_on = cluster.get_number_of_nodes_on()
 
@@ -405,16 +418,27 @@ def main():
             cluster.trigger_descheduler()
 
         for node in cluster.nodes:
+            if node.status == NodeStatus.ON:
+                cpu_usage = query_prometheus(node, range)
+                if cpu_usage:
+                    prometheus_values_1[node.id] = cpu_usage
+
+        sleep(range/2)
+
+        for node in cluster.nodes:
             cpu_usage = query_prometheus(node, range)
             if cpu_usage:
-                prometheus_values[node.id] = cpu_usage
+                prometheus_values_2[node.id] = cpu_usage
 
-        if len(prometheus_values) == nb_nodes_on:
+        if len(prometheus_values_1) == nb_nodes_on and len(prometheus_values_2) == nb_nodes_on:
             for node in cluster.nodes:
                 if node.status == NodeStatus.ON:
-                    node.add_value_to_history(prometheus_values[node.id])      
+                    val1 = prometheus_values_1.get(node.id, 0.0)
+                    val2 = prometheus_values_2.get(node.id, 0.0)
+                    mean_val = (val1 + val2) / 2
+                    node.add_value_to_history(mean_val)
                     node.update_history_state(min_threshold, max_threshold)
-                    newest_sum += prometheus_values[node.id]
+                    newest_sum += mean_val
 
         cluster.update_history_state()
 
@@ -440,7 +464,7 @@ def main():
         elif cluster.history_state == HistoryState.NORMAL:
             logger.info("Cluster is in a normal state. No action required.")
 
-        sleep(range)
+        sleep(range/2)
 
 if __name__ == "__main__":
     main()

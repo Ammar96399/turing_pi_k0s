@@ -107,7 +107,7 @@ if __name__ == "__main__":
         while not check_queue_message_count():
             time.sleep(1)
         connection.close()
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/new_workload/long_term/gold/test_1/experiment_end_time.txt")
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/new_workload/long_term/diamond/test_1/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Process interrupted by user.")
         connection.close()

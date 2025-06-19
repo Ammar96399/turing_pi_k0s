@@ -49,13 +49,13 @@
   vars:
     observatory: "event_driven_observatory"
 
-- name: Start node control
-  hosts: server
-  gather_facts: true
-  become: true
-  roles:    
-    - role: node_control
-  vars:
-    window_size: 20
-    min_threshold: 40
-    max_threshold: 70
+# - name: Start node control
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:    
+#     - role: node_control
+#   vars:
+#     window_size: 20
+#     min_threshold: 40
+#     max_threshold: 70

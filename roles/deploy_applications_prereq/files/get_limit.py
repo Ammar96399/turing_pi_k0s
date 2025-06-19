@@ -4,7 +4,7 @@ def get_value(number):
     if number % 8 in {1, 2, 3}:
         return "1"
     elif number % 8 in {4, 5, 6, 7, 0}:
-        return "200m"
+        return "220m"
     else:
         return "Invalid number"
 
