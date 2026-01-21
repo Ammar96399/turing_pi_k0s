@@ -90,6 +90,8 @@ def process_workload_folders():
                 folder_path = base_path / item
                 if folder_path.is_dir():
                     folder_name = item
+                else: 
+                    return 0
                 payload = json.dumps({"events": -1, "timestamp": time.time()}).encode()
                 channel.basic_publish(
                     exchange=EXCHANGE,
