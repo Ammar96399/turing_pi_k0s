@@ -2,10 +2,9 @@
 - name: Emulation preparation
   hosts: server
   gather_facts: true
-  become: true
-  roles: 
+  roles:
     - role: emulation_preparation
-    
+
 - name: Setup monitoring
   hosts: server
   gather_facts: true
@@ -34,12 +33,14 @@
   vars:
     observatory: "long_term_observatory"
 
-- name: Run long term simulation
+- name: Run event_driven_observatory simulation
   hosts: server
   gather_facts: true
   become: true
   roles:
     - role: deploy_applications
+  vars:
+    observatory: "long_term_observatory"
 
 - name: Inject workload
   hosts: localhost
@@ -52,10 +53,10 @@
 # - name: Start node control
 #   hosts: server
 #   gather_facts: true
-#   become: true
-#   roles:    
+#   become: false
+#   roles:
 #     - role: node_control
 #   vars:
 #     window_size: 20
-#     min_threshold: 40
-#     max_threshold: 90
+#     min_threshold: 30
+#     max_threshold: 80

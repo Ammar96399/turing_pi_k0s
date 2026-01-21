@@ -19,6 +19,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+log_file = "node_control_log.log"
+if not os.path.exists(log_file):
+    open(log_file, 'w').close()
+
 PROMETHEUS_URL = "http://131.254.100.18:30090/api/v1/query"
 
 class NodeType(Enum):
@@ -171,12 +175,12 @@ class Cluster:
                 kube_name="rk1-1",
                 window_size=window_size
             ),Node(
-                ip="131.254.100.29",
+                ip="131.254.100.96",
                 id=3,
                 type=NodeType.CM4,
                 role=NodeRole.WORKER,
                 status=NodeStatus.ON,
-                kube_name="rpi2",
+                kube_name="cm4-0",
                 window_size=window_size
             ),
         ]
@@ -359,6 +363,8 @@ def query_prometheus(node: Node, range_str):
                     value = data['data']['result'][0]['value'][1]
                     cpu_usage = float(value) if value != "NaN" else 0.0
                     logger.info(f"CPU usage for node {node.id}: {cpu_usage:.2f}%")
+                else:
+                    logger.info(f"The response to the query was not success {node}: {data}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Error querying CPU usage for instance {node}: {e}")
 

@@ -71,20 +71,36 @@
   register: crb_result
   failed_when: crb_result.rc != 0
 
+- name: Find all simulation subfolders
+  delegate_to: localhost
+  tags: simulation_jobs
+  run_once: true
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/roles/workloads_injector/files/{{ observatory }}/applications"
+    file_type: directory
+    recurse: no
+  register: found_dirs
+
+- set_fact:
+    simulation_dirs: "{{ found_dirs.files | map(attribute='path') | map('basename') | list }}"
+  tags: simulation_jobs
+
 - name: Run Jobs for multiple workload numbers in simulation namespace
+  tags: simulation_jobs
   ansible.builtin.shell: |
-    python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_request.py {{ workload_number }} > /tmp/request;
-    python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_limit.py {{ workload_number }} > /tmp/limit;
-    export REQUEST=$(cat /tmp/request);
-    export LIMIT=$(cat /tmp/limit);
+    python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_request.py {{ item }} > /tmp/request_{{ item }};
+    python3 /home/{{ ansible_user }}/simulation/{{ workload }}_simulation/get_limit.py {{ item }} > /tmp/limit_{{ item }};
+
+    export REQUEST=$(cat /tmp/request_{{ item }});
+    export LIMIT=$(cat /tmp/limit_{{ item }});
+
     k0s kubectl apply -f - <<EOF
     apiVersion: batch/v1
     kind: Job
     metadata:
-      name: application-simulator-{{ workload_number }}
+      name: "application-simulator-{{ item | replace('_', '-') }}"
       namespace: simulation
     spec:
-      # ttlSecondsAfterFinished: 10
       backoffLimit: 20
       template:
         spec:
@@ -93,7 +109,7 @@
             - name: application-simulator
               image: application-simulator:local
               args:
-                - "{{ workload_number }}"
+                - "{{ item }}"
                 - "{{ one_minute }}"
               imagePullPolicy: Never
               env:
@@ -108,8 +124,9 @@
                   cpu: "${LIMIT}"
           restartPolicy: OnFailure
     EOF
-  loop: "{{ range(1, 57) | list }}"
+  loop: "{{ simulation_dirs }}"
   loop_control:
-    loop_var: workload_number
+    loop_var: item
   register: job_result
+  changed_when: job_result.rc == 0
   failed_when: job_result.rc != 0

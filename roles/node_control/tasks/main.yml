@@ -13,22 +13,18 @@
     path: "/home/{{ ansible_user }}/simulation/node_control_log.log"
     state: absent
   ignore_errors: true
-  become: true
 
 - name: Remove logs file
   ansible.builtin.file:
     path: "/home/{{ ansible_user }}/simulation/node_control_pid.txt"
     state: absent
   ignore_errors: true
-  become: true
 
-- name: Run the node_control script
+- name: Run the node_control script in background
   ansible.builtin.shell: |
-    python3 /home/{{ ansible_user }}/simulation/node_control.py {{ one_minute }} {{ window_size }} {{ min_threshold }} {{ max_threshold }} & echo $! > /home/{{ ansible_user }}/simulation/node_control_pid.txt
+    nohup python3 /home/{{ ansible_user }}/simulation/node_control.py {{ one_minute }} {{ window_size }} {{ min_threshold }} {{ max_threshold }} > /home/{{ ansible_user }}/simulation/node_control_log.log 2>&1 & echo $! > /home/{{ ansible_user }}/simulation/node_control_pid.txt
   args:
     chdir: "/home/{{ ansible_user }}/simulation/"
-  register: script_result
-  failed_when: script_result.rc != 0
   changed_when: false
 
 - name: Delete existing Descheduler job if present
@@ -37,7 +33,7 @@
   ignore_errors: true
   changed_when: false
   become: true
-  
+
 - name: Copy Descheduler custom values file
   ansible.builtin.template:
     src: "descheduler-values.yaml.j2"
@@ -63,6 +59,7 @@
     repo remove {{ descheduler_release_name }}
   ignore_errors: true
   changed_when: false
+  become: true
 
 - name: Add Helm repository for Descheduler
   ansible.builtin.command: >

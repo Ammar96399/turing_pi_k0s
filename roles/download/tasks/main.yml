@@ -1,5 +1,4 @@
 ---
-
 - name: Make dir for k0s distro(s)
   delegate_to: localhost
   become: false

@@ -8,10 +8,11 @@
   ansible.builtin.file:
     path: "{{ results_dir }}"
     state: directory
-    mode: '0755'
+    mode: "0755"
 
-- name: Run power measurement script locally in the background
-  ansible.builtin.shell: python3 {{ playbook_dir }}/roles/system_measurements/files/collect_power.py {{ results_dir }}/power_usage.csv > {{ results_dir }}/power_log.txt 2>&1 & echo $! > {{ results_dir }}/power_pid.txt
+- name: Run collect_power.py in background on the localhost and save its PID
+  ansible.builtin.shell: bash -c 'python3 {{ playbook_dir }}/roles/system_measurements/files/collect_power.py --output {{ results_dir }}/power_usage.csv > {{ results_dir }}/collect_power.log 2>&1 & echo $! > {{ results_dir }}/collect_power.pid'
+  become: true
   args:
     chdir: "{{ playbook_dir }}"
   register: script_result

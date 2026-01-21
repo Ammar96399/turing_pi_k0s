@@ -26,5 +26,5 @@ RestartSec=5s
 ExecStartPre=-/sbin/modprobe br_netfilter
 ExecStartPre=-/sbin/modprobe overlay
 ExecStart=/usr/local/bin/k3s server --cluster-init --data-dir {{ k3s_server_location }} {{ extra_server_args }} --node-label {{ label }} 
-#--kube-scheduler-arg=config=/home/ubuntu/scheduler-config.yaml
+#--kube-scheduler-arg=config=/home/akazem/scheduler-config.yaml
 

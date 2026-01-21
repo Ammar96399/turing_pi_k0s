@@ -60,7 +60,7 @@
     - name: Copy K3s scheduler config file
       ansible.builtin.template:
         src: "k3s-scheduler-config.yaml.j2"
-        dest: "/home/ubuntu/scheduler-config.yaml"
+        dest: "/home/akazem/scheduler-config.yaml"
         owner: root
         group: root
         mode: "0644"

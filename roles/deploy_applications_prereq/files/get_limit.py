@@ -1,21 +1,16 @@
 import sys
 
-def get_value(number):
-    if number % 8 in {1, 2, 3}:
+def get_value(name):
+    if name.lower().startswith("high"):
         return "1"
-    elif number % 8 in {4, 5, 6, 7, 0}:
-        return "220m"
     else:
-        return "Invalid number"
-
+        return "250m"
+    
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python get_request.py <number>")
         sys.exit(1)
     
-    try:
-        number = int(sys.argv[1])
-        print(get_value(number))
-    except ValueError:
-        print("Please provide a valid integer.")
-        sys.exit(1)
+    number = sys.argv[1]
+    print(get_value(number))
+    

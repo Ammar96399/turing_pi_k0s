@@ -4,11 +4,11 @@ server:
     enabled: false
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "100m"
-    limits:
       memory: "1024Mi"
-      cpu: "500m"
+      cpu: "400m"
+    limits:
+      memory: "2048Mi"
+      cpu: "700m"
   service:
     type: NodePort
     port: 9090
@@ -25,10 +25,10 @@ prometheus-node-exporter:
   resources:
     requests:
       memory: "512Mi"
-      cpu: "100m"
+      cpu: "400m"
     limits:
       memory: "1024Mi"
-      cpu: "500m"
+      cpu: "700m"
   
 alertmanager:
   enabled: false
