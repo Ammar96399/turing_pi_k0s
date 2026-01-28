@@ -21,13 +21,6 @@ channel = connection.channel()
 
 channel.exchange_declare(exchange=EXCHANGE, exchange_type="direct", durable=True)
 
-import time
-import json
-import pika # Assuming pika is defined elsewhere (needed for channel and BasicProperties)
-
-# Assuming EXCHANGE and channel are defined globally or passed into the function
-# For this example, we'll assume they are available in the scope.
-
 def publish_cpu_loads(results_dict, minute):
     for folder_name, event_list in results_dict.items():
         try:
