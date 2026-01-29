@@ -8,7 +8,7 @@ from datetime import datetime
 
 BROKER = "131.254.19.109"
 PORT = 5672 
-EXCHANGE = "event_driven_observatory"
+EXCHANGE = "nepal_scenario"
 QUEUE_NAME = sys.argv[1]
 ONE_MINUTE = int(sys.argv[2])
 
@@ -82,7 +82,8 @@ def treat_messages():
                 logger.info("Finish message received. Stopping.")
                 ch.stop_consuming()
                 return
-            run_sysbench(round(data.get("events")))
+            print(round(data.get("events")))
+            # run_sysbench(round(data.get("events")))
             log_delay_every_message(timenow, data.get("timestamp"))
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError:
@@ -126,14 +127,8 @@ if __name__ == "__main__":
 
     channel.queue_bind(exchange=EXCHANGE, queue=QUEUE_NAME, routing_key=QUEUE_NAME)
 
-    # final_message = treat_outdated_messages()
-
     logger.info(f"Connected to {BROKER}:{PORT}")
     try:
-        # if final_message:
-        #     logger.info("Finish message received. Stopping.")
-        #     channel.stop_consuming()
-        # else:
         logger.info("Waiting for messages... (Press CTRL+C to exit)")
         treat_messages()
     except KeyboardInterrupt:
