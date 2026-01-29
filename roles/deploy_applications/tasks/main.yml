@@ -98,7 +98,7 @@
     apiVersion: batch/v1
     kind: Job
     metadata:
-      name: "application-simulator-{{ item | replace('_', '-') }}"
+      name: "application-simulator-{{ item | lower | replace('_', '-') }}"
       namespace: simulation
     spec:
       backoffLimit: 20

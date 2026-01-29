@@ -51,6 +51,15 @@
     mode: "0755"
     owner: "{{ ansible_user }}"
 
+- name: Copy the application configuration file
+  ansible.builtin.copy:
+    src: "/home/akazem/Documents/PhD/projects/energy_proportionality/cluster_configuration/turing_pi_emulation/roles/workloads_injector/files/nepal_scenario/configs/workloads_configuration.yml"
+    dest: "/home/{{ ansible_user }}/simulation/{{ workload }}_simulation"
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    force: true
+
 - name: Copy the application script
   ansible.builtin.copy:
     src: application.py

@@ -116,7 +116,7 @@ if __name__ == "__main__":
         process_workload_folders()
         time.sleep(WAIT_TIME)
         connection.close()
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/new_workload/long_term/green/test_1/experiment_end_time.txt")
+        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/degradation/nepal_scenario/test_1/experiment_end_time.txt")
     except KeyboardInterrupt:
         print("Process interrupted by user.")
         connection.close()

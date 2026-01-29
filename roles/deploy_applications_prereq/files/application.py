@@ -82,8 +82,7 @@ def treat_messages():
                 logger.info("Finish message received. Stopping.")
                 ch.stop_consuming()
                 return
-            print(round(data.get("events")))
-            # run_sysbench(round(data.get("events")))
+            run_sysbench(round(data.get("events")))
             log_delay_every_message(timenow, data.get("timestamp"))
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError:
