@@ -12,7 +12,7 @@ WAIT_TIME = int(sys.argv[2]) if len(sys.argv) > 2 else 60
 BROKER = "131.254.19.109"
 PORT = 5672
 BASE_PATH = f"/home/akazem/Documents/PhD/projects/energy_proportionality/cluster_configuration/turing_pi_emulation/roles/workloads_injector/files/{OBSERVATORY}/applications"
-EXCHANGE = "nepal_scenario"
+EXCHANGE = OBSERVATORY
 
 credentials = pika.PlainCredentials("guest", "guest") 
 parameters = pika.ConnectionParameters(BROKER, PORT, "/", credentials)
