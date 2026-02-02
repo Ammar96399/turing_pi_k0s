@@ -1,18 +1,24 @@
 ---
-- name: Prepare Nepal scenario simulation
-  hosts: turing_pi_cluster
-  gather_facts: true
-  become: true
-  roles:
-    - role: deploy_applications_prereq
-
-- name: Run nepal_scenario_observatory simulation
+- name: Setup monitoring
   hosts: server
   gather_facts: true
   become: true
   roles:
-    - role: deploy_applications
-  vars:
-    # observatory: "event_driven_observatory"
-    # observatory: "long_term_observatory"
-    observatory: "nepal_scenario"
+    - role: monitoring
+# - name: Prepare Nepal scenario simulation
+#   hosts: turing_pi_cluster
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: deploy_applications_prereq
+# - name: Run nepal_scenario_observatory simulation
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: deploy_applications
+#   vars:
+#     # observatory: "event_driven_observatory"
+#     # observatory: "long_term_observatory"
+#     observatory: "nepal_scenario"
+

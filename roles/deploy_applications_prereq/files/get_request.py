@@ -3,7 +3,6 @@ import yaml
 import os
 
 def get_value(name):
-    # Get the path to the YAML configuration file
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(
         script_dir, 
@@ -15,7 +14,6 @@ def get_value(name):
     
     for workload in data['configuration']:
         if workload['name'] == name:
-            # Convert CPU limit to Kubernetes format (e.g., 0.1 -> 100m)
             if isinstance(workload['max_value'], (int, float)):
                 value = workload['max_value'] / 3.8
                 if value < 1:

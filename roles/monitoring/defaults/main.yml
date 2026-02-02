@@ -11,3 +11,8 @@ grafana_release_name: "grafana"
 grafana_chart_repo: "https://grafana.github.io/helm-charts"
 grafana_chart_name: "grafana/grafana"
 grafana_admin_password: "admin"
+
+# Prometheus monitoring configuration
+monitoring_namespace: "monitoring"
+scrape_interval: 5
+one_minute: 10

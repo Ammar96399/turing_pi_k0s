@@ -1,0 +1,86 @@
+---
+groups:
+  - name: simulation_resource_usage
+    interval: {{ scrape_interval * 2 }}s
+    rules:
+      # CPU Usage - Current (every scrape_interval * 2)
+      - record: job:cpu_usage_seconds:rate{{ scrape_interval * 2 }}s
+        expr: |
+          sum by (job, namespace, pod) (
+            rate(container_cpu_usage_seconds_total{namespace="simulation", container!="", container!="POD"}[{{ scrape_interval * 2 }}s])
+          )
+      
+      # Memory Usage - Current (every scrape_interval * 2)
+      - record: job:memory_usage_bytes:current
+        expr: |
+          sum by (job, namespace, pod) (
+            container_memory_working_set_bytes{namespace="simulation", container!="", container!="POD"}
+          )
+      
+      # CPU Usage - 1 hour average
+      - record: job:cpu_usage_seconds:avg1h
+        expr: |
+          avg_over_time(
+            job:cpu_usage_seconds:rate{{ scrape_interval * 2 }}s[1h]
+          )
+      
+      # Memory Usage - 1 hour average
+      - record: job:memory_usage_bytes:avg1h
+        expr: |
+          avg_over_time(
+            job:memory_usage_bytes:current[1h]
+          )
+      
+      # CPU Usage - 12 hour average
+      - record: job:cpu_usage_seconds:avg12h
+        expr: |
+          avg_over_time(
+            job:cpu_usage_seconds:rate{{ scrape_interval * 2 }}s[12h]
+          )
+      
+      # Memory Usage - 12 hour average
+      - record: job:memory_usage_bytes:avg12h
+        expr: |
+          avg_over_time(
+            job:memory_usage_bytes:current[12h]
+          )
+      
+      # CPU Usage - 24 hour average
+      - record: job:cpu_usage_seconds:avg24h
+        expr: |
+          avg_over_time(
+            job:cpu_usage_seconds:rate{{ scrape_interval * 2 }}s[24h]
+          )
+      
+      # Memory Usage - 24 hour average
+      - record: job:memory_usage_bytes:avg24h
+        expr: |
+          avg_over_time(
+            job:memory_usage_bytes:current[24h]
+          )
+      
+      # Network I/O - Current
+      - record: job:network_receive_bytes:rate{{ scrape_interval * 2 }}s
+        expr: |
+          sum by (job, namespace, pod) (
+            rate(container_network_receive_bytes_total{namespace="simulation"}[{{ scrape_interval * 2 }}s])
+          )
+      
+      - record: job:network_transmit_bytes:rate{{ scrape_interval * 2 }}s
+        expr: |
+          sum by (job, namespace, pod) (
+            rate(container_network_transmit_bytes_total{namespace="simulation"}[{{ scrape_interval * 2 }}s])
+          )
+      
+      # Disk I/O - Current
+      - record: job:disk_read_bytes:rate{{ scrape_interval * 2 }}s
+        expr: |
+          sum by (job, namespace, pod) (
+            rate(container_fs_reads_bytes_total{namespace="simulation"}[{{ scrape_interval * 2 }}s])
+          )
+      
+      - record: job:disk_write_bytes:rate{{ scrape_interval * 2 }}s
+        expr: |
+          sum by (job, namespace, pod) (
+            rate(container_fs_writes_bytes_total{namespace="simulation"}[{{ scrape_interval * 2 }}s])
+          )

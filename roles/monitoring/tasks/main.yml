@@ -114,3 +114,45 @@
     -n {{ monitoring_namespace }}
     wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus --timeout=300s
   changed_when: false
+
+# Victoria Metrics Deployment
+- name: Add Victoria Metrics Helm repository
+  ansible.builtin.command: "{{ helm_binary_path }} repo add vm https://victoriametrics.github.io/helm-charts/"
+  register: vm_repo_add
+  changed_when: vm_repo_add.rc == 0
+  failed_when: vm_repo_add.rc != 0 and "already exists" not in vm_repo_add.stderr
+
+- name: Update Helm repositories for Victoria Metrics
+  ansible.builtin.command: "{{ helm_binary_path }} repo update"
+  changed_when: false
+
+- name: Copy Victoria Metrics custom values file
+  ansible.builtin.template:
+    src: "victoria-metrics-values.yaml.j2"
+    dest: "/tmp/victoria-metrics-values.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Victoria Metrics via Helm
+  ansible.builtin.command: >
+    {{ helm_binary_path }} upgrade --install {{ victoriametrics_release_name | default('victoria-metrics') }}
+    vm/victoria-metrics-single
+    --namespace {{ monitoring_namespace }}
+    --kubeconfig {{ k3s_kubeconfig }}
+    -f /tmp/victoria-metrics-values.yaml
+  register: helm_install_vm
+  changed_when: helm_install_vm.rc == 0
+  failed_when: helm_install_vm.rc != 0
+
+- name: Debug Victoria Metrics deployment output
+  ansible.builtin.debug:
+    msg: "{{ helm_install_vm.stdout_lines + helm_install_vm.stderr_lines }}"
+  when: helm_install_vm.rc != 0
+
+- name: Wait for Victoria Metrics to be ready
+  ansible.builtin.command: >
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
+    -n {{ monitoring_namespace }}
+    wait --for=condition=ready pod -l app.kubernetes.io/name=victoria-metrics-single --timeout=300s
+  changed_when: false
