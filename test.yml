@@ -1,10 +1,46 @@
 ---
+# - name: Setup monitoring
+#  hosts: server
+#  gather_facts: true
+#  become: true
+#  roles:
+#    - role: monitoring
+# - name: Setup monitoring
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: get_request
+# - name: Setup monitoring
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: get_limit
 - name: Setup monitoring
   hosts: server
   gather_facts: true
   become: true
   roles:
-    - role: monitoring
+    - role: lp_schedules
+# - name: Setup monitoring
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: lp_schedules_operator
+# - name: Setup monitoring
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: get_request
+# - name: Setup monitoring
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: get_limit
 # - name: Prepare Nepal scenario simulation
 #   hosts: turing_pi_cluster
 #   gather_facts: true
