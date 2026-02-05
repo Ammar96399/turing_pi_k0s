@@ -1,0 +1,178 @@
+---
+- name: Check if Docker is installed
+  ansible.builtin.stat:
+    path: /usr/bin/docker
+  register: docker_installed
+
+- name: Download Docker installation script
+  ansible.builtin.get_url:
+    url: https://test.docker.com
+    dest: /tmp/get-docker.sh
+    mode: "0755"
+  when: not docker_installed.stat.exists
+
+- name: Execute Docker installation script
+  ansible.builtin.command:
+    cmd: sh /tmp/get-docker.sh
+  args:
+    creates: /usr/bin/docker
+  when: not docker_installed.stat.exists
+  register: docker_install_result
+  changed_when: docker_install_result.rc == 0
+
+- name: Ensure Docker service is running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Create the solar_energy_model build directory
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/solar_energy_model
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+
+- name: Delete the solar_energy_model build directory if exists
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/solar_energy_model
+    state: absent
+
+- name: Recreate the solar_energy_model build directory
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/solar_energy_model
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+
+- name: Copy the solar energy estimator script
+  ansible.builtin.copy:
+    src: energy_estimator.py
+    dest: "/home/{{ ansible_user }}/solar_energy_model"
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    force: true
+
+- name: Copy the Dockerfile
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: "/home/{{ ansible_user }}/solar_energy_model"
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    force: true
+
+- name: Remove docker image
+  ansible.builtin.command: sudo docker image rm solar-energy-model:local
+  ignore_errors: true
+
+- name: Build the docker image
+  community.docker.docker_image:
+    build:
+      path: /home/{{ ansible_user }}/solar_energy_model
+      nocache: true
+    name: solar-energy-model
+    source: build
+    tag: local
+
+- name: Check if the docker image tar file exists
+  ansible.builtin.stat:
+    path: /home/{{ ansible_user }}/solar_energy_model/solar-energy-model.tar
+  register: docker_image_tar
+
+- name: Delete the docker image tar file
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/solar_energy_model/solar-energy-model.tar
+    state: absent
+  when: docker_image_tar.stat.exists
+
+- name: Save the docker image to a tar file
+  ansible.builtin.shell: |
+    docker save solar-energy-model:local > /home/{{ ansible_user }}/solar_energy_model/solar-energy-model.tar
+
+- name: Remove the docker image from the master node
+  ansible.builtin.command: sudo k0s ctr images rm docker.io/library/solar-energy-model:local
+  ignore_errors: true
+
+- name: Import the docker image to the master node
+  ansible.builtin.command: sudo k0s ctr images import /home/{{ ansible_user }}/solar_energy_model/solar-energy-model.tar
+
+- name: Ensure lp-schedules-operator namespace exists
+  ansible.builtin.command: >
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
+    create namespace lp-schedules-operator
+  ignore_errors: true
+  changed_when: false
+
+- name: Delete solar-energy-model deployment if it exists
+  ansible.builtin.command: >
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
+    delete deployment solar-energy-model
+    -n lp-schedules-operator
+  ignore_errors: true
+  changed_when: false
+
+- name: Deploy solar-energy-model to Kubernetes
+  ansible.builtin.shell: |
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }} apply -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: solar-energy-model
+      namespace: lp-schedules-operator
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: solar-energy-model
+      template:
+        metadata:
+          labels:
+            app: solar-energy-model
+        spec:
+          nodeSelector:
+            role: server
+          containers:
+            - name: solar-energy-model
+              image: docker.io/library/solar-energy-model:local
+              imagePullPolicy: Never
+              ports:
+                - containerPort: 49095
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "25m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "250m"
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: solar-energy-model
+      namespace: lp-schedules-operator
+    spec:
+      selector:
+        app: solar-energy-model
+      ports:
+        - name: http
+          port: 49095
+          targetPort: 49095
+      type: ClusterIP
+    EOF
+
+- name: Wait for solar-energy-model deployment to be ready
+  ansible.builtin.command: >
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
+    -n lp-schedules-operator
+    wait --for=condition=available
+    --timeout=300s
+    deployment/solar-energy-model
+  changed_when: false
