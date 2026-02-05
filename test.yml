@@ -1,60 +1,55 @@
 ---
-# - name: Setup monitoring
-#  hosts: server
-#  gather_facts: true
-#  become: true
-#  roles:
-#    - role: monitoring
-# - name: Setup monitoring
+# - name: Setup get request application
 #   hosts: server
 #   gather_facts: true
 #   become: true
 #   roles:
 #     - role: get_request
-# - name: Setup monitoring
+
+# - name: Setup get limit application
 #   hosts: server
 #   gather_facts: true
 #   become: true
 #   roles:
 #     - role: get_limit
-- name: Setup monitoring
-  hosts: server
-  gather_facts: true
-  become: true
-  roles:
-    - role: lp_schedules
-# - name: Setup monitoring
+
+# - name: Setup lp_schedules problem solver
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: lp_schedules
+
+# - name: Setup lp_schedules_operator
 #   hosts: server
 #   gather_facts: true
 #   become: true
 #   roles:
 #     - role: lp_schedules_operator
-# - name: Setup monitoring
-#   hosts: server
+- name: Prepare simulation prerequisites
+  hosts: turing_pi_cluster
+  gather_facts: true
+  become: true
+  roles:
+    - role: deploy_applications_prereq
+# # *********** Get the energy budget and update the CRD *********** #
+
+# - name: Prepare injecting workloads
+#   hosts: localhost
 #   gather_facts: true
-#   become: true
 #   roles:
-#     - role: get_request
-# - name: Setup monitoring
-#   hosts: server
-#   gather_facts: true
-#   become: true
-#   roles:
-#     - role: get_limit
-# - name: Prepare Nepal scenario simulation
-#   hosts: turing_pi_cluster
-#   gather_facts: true
-#   become: true
-#   roles:
-#     - role: deploy_applications_prereq
-# - name: Run nepal_scenario_observatory simulation
-#   hosts: server
-#   gather_facts: true
-#   become: true
-#   roles:
-#     - role: deploy_applications
+#     - role: workloads_injector_prep
 #   vars:
 #     # observatory: "event_driven_observatory"
 #     # observatory: "long_term_observatory"
 #     observatory: "nepal_scenario"
 
+# - name: Inject workload
+#   hosts: localhost
+#   gather_facts: true
+#   roles:
+#     - role: workloads_injector
+#   vars:
+#     # observatory: "event_driven_observatory"
+#     # observatory: "long_term_observatory"
+#     observatory: "nepal_scenario"

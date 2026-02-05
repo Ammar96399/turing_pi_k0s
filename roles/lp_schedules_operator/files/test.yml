@@ -3,7 +3,7 @@ kind: LPSchedule
 metadata:
   name: flood-detection-optimization
 spec:
-  budget: 1200
+  budget: 1201
   objective_type: "weighted_level_sum"
   applications:
     "App A":
