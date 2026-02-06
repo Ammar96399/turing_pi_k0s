@@ -5,8 +5,13 @@ import pika
 import json
 import logging
 from datetime import datetime
+import os
+import urllib.parse
+import urllib.request
+import urllib.error
 
 BROKER = "131.254.19.109"
+TIME_PROXY_URL = "http://131.254.19.109:5000"
 PORT = 5672 
 EXCHANGE = "nepal_scenario"
 QUEUE_NAME = sys.argv[1]
@@ -19,6 +24,31 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+def send_bogos_to_time_proxy(app_name: str, bogos: float) -> bool:
+    """
+    Send the number of bogos treated for a given app to time_proxy.
+    Requires TIME_PROXY_URL env var (e.g., http://localhost:5000).
+    """
+    params = urllib.parse.urlencode({
+        "value": float(bogos),
+        "device": app_name,
+    })
+    url = f"{TIME_PROXY_URL.rstrip('/')}/data/bogos_treated?{params}"
+    req = urllib.request.Request(url, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            if 200 <= resp.status < 300:
+                return True
+            logger.error(f"time_proxy write failed: HTTP {resp.status}")
+            return False
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        logger.error(f"time_proxy write failed: HTTP {e.code} {body}")
+        return False
+    except urllib.error.URLError as e:
+        logger.error(f"time_proxy write failed: {e}")
+        return False
 
 def run_sysbench(value):
     events = value * ONE_MINUTE
@@ -83,6 +113,7 @@ def treat_messages():
                 ch.stop_consuming()
                 return
             run_sysbench(round(data.get("events")))
+            send_bogos_to_time_proxy(QUEUE_NAME, data.get("events", 0))
             log_delay_every_message(timenow, data.get("timestamp"))
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError:
