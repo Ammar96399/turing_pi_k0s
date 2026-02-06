@@ -1,8 +1,12 @@
 import argparse
-import csv
 import datetime as dt
+import os
+import time
+import json
 import urllib.parse
 import urllib.request
+import urllib.error
+from influxdb_client import InfluxDBClient
 
 # --- CONSTANTS FOR SIMULATION ---
 STC_IRRADIANCE = 1000.0  # W/m2 (Standard Test Condition)
@@ -10,11 +14,12 @@ SYSTEM_LOSSES = 0.14     # 14% (cabling, inverter, dirt)
 
 # Converted to Wh (10kWh -> 10000Wh)
 BATTERY_CAPACITY_WH = 100.0
-INITIAL_SOC_WH = 100.0   
+INITIAL_SOC_WH = 100.0
 MAX_CHARGE_W = 50.0      # Max power battery can take in Watts
 
 CHARGE_EFFICIENCY = 0.95 
 DISCHARGE_EFFICIENCY = 0.94
+LOCAL_TZ = dt.timezone(dt.timedelta(hours=1))
 
 def parse_date(s: str) -> dt.date:
     return dt.datetime.strptime(s, "%Y-%m-%d").date()
@@ -23,7 +28,7 @@ def fetch_csv(lat, lon, start, end):
     params = {
         "lat": f"{lat}", "lon": f"{lon}",
         "startyear": str(start.year), "endyear": str(end.year),
-        "outputformat": "csv", "hourly": "1"
+        "outputformat": "csv", "timeinterval": "1"
     }
     url = "https://re.jrc.ec.europa.eu/api/seriescalc?" + urllib.parse.urlencode(params)
     with urllib.request.urlopen(url) as r:
@@ -38,6 +43,76 @@ def parse_pvgis_csv(csv_text: str):
             if line.startswith("#"): break
             rows.append(line.split(","))
     return header, rows
+
+def fetch_sim_time(time_proxy_url: str) -> float:
+    url = f"{time_proxy_url.rstrip('/')}/time"
+    with urllib.request.urlopen(url) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    return float(payload["time"])
+
+def send_to_time_proxy(time_proxy_url: str, measurement: str, value: float, device: str) -> bool:
+    params = urllib.parse.urlencode({
+        "value": float(value),
+        "device": device,
+    })
+    url = f"{time_proxy_url.rstrip('/')}/data/{measurement}?{params}"
+    req = urllib.request.Request(url, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return 200 <= resp.status < 300
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(f"time_proxy write failed: HTTP {e.code} {body}")
+        return False
+    except urllib.error.URLError as e:
+        print(f"time_proxy write failed: {e}")
+        return False
+
+def build_hourly_generation_map(header, rows, start_date, end_date, wp):
+    time_idx = header.index("time")
+    ghi_idx = header.index("G(i)")
+    hourly_gen_wh = {}
+    daily_gen_wh = {}
+    for r in rows:
+        if len(r) != 6:
+            continue
+        t = dt.datetime.strptime(r[time_idx], "%Y%m%d:%H%M").replace(tzinfo=LOCAL_TZ)
+        t_hour = t.replace(minute=0, second=0, microsecond=0)
+        if not (start_date <= t.date() <= end_date):
+            continue
+        irradiance_wm2 = float(r[ghi_idx])
+        p_gen = (irradiance_wm2 / STC_IRRADIANCE) * wp * (1 - SYSTEM_LOSSES)
+        gen_wh = max(0.0, p_gen) * 1.0
+        hourly_gen_wh[t_hour] = hourly_gen_wh.get(t_hour, 0.0) + gen_wh
+        daily_gen_wh[t_hour.date()] = daily_gen_wh.get(t_hour.date(), 0.0) + gen_wh
+    return hourly_gen_wh, daily_gen_wh
+
+def query_consumed_wh(query_api, bucket, start_dt, end_dt, wattmeter_device):
+    start_iso = start_dt.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
+    end_iso = end_dt.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
+    flux = f'''
+from(bucket: "{bucket}")
+  |> range(start: {start_iso}, stop: {end_iso})
+  |> filter(fn: (r) => r._measurement == "power_W" and r._field == "value" and r.device == "{wattmeter_device}")
+  |> integral(unit: 1h)
+'''
+    tables = query_api.query(flux)
+    total = 0.0
+    for table in tables:
+        for record in table.records:
+            total += float(record.get_value())
+    return total
+
+def update_battery_soc(soc_wh, gen_wh, consumed_wh):
+    if gen_wh >= consumed_wh:
+        surplus = gen_wh - consumed_wh
+        charge_cap_wh = MAX_CHARGE_W * 1.0
+        charge_wh = min(surplus * CHARGE_EFFICIENCY, charge_cap_wh)
+        return min(BATTERY_CAPACITY_WH, soc_wh + charge_wh)
+    deficit = consumed_wh - gen_wh
+    draw_needed = deficit / DISCHARGE_EFFICIENCY
+    draw = min(draw_needed, soc_wh)
+    return soc_wh - draw
 
 def run_simulation(header, rows, start_date, end_date, wp, hourly_load_w):
     time_idx = header.index("time")
@@ -90,8 +165,10 @@ def main():
     p.add_argument("--start", required=True)
     p.add_argument("--end", required=True)
     p.add_argument("--wp", type=float, default=100.0, help="Solar Peak Power in Watts")
-    p.add_argument("--load", type=float, default=5.0, help="Constant hourly load in Watts")
-    p.add_argument("--out", default="solar_sim_results.csv")
+    p.add_argument("--load", type=float, default=5.0, help="Fallback hourly load in Watts")
+    p.add_argument("--device", default="solar_model", help="Device tag to send with data")
+    p.add_argument("--wattmeter-device", default="wattmeter", help="Device tag for power_W")
+    p.add_argument("--time-proxy-url", default=os.getenv("TIME_PROXY_URL", "http://localhost:5000"))
     args = p.parse_args()
 
     start, end = parse_date(args.start), parse_date(args.end)
@@ -99,16 +176,64 @@ def main():
     print("Fetching data from PVGIS...")
     csv_text = fetch_csv(args.lat, args.lon, start, end)
     header, rows = parse_pvgis_csv(csv_text)
-    
-    print(f"Running simulation for {args.wp}Wp system...")
-    new_header, final_rows = run_simulation(header, rows, start, end, args.wp, args.load)
+    if not header or not rows:
+        raise RuntimeError("PVGIS returned no hourly data. Check date range and API parameters.")
+    hourly_gen_wh, daily_gen_wh = build_hourly_generation_map(header, rows, start, end, args.wp)
 
-    with open(args.out, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(new_header)
-        writer.writerows(final_rows)
+    influx_url = os.getenv("INFLUX_URL")
+    influx_token = os.getenv("INFLUX_TOKEN")
+    influx_org = os.getenv("INFLUX_ORG")
+    influx_bucket = os.getenv("INFLUX_BUCKET")
+    influx_client = None
+    query_api = None
+    if influx_url and influx_token and influx_org and influx_bucket:
+        influx_client = InfluxDBClient(url=influx_url, token=influx_token, org=influx_org)
+        query_api = influx_client.query_api()
+    else:
+        print("InfluxDB env vars missing; will use fallback load.")
 
-    print(f"Simulation complete. {len(final_rows)} hours processed.")
+    last_day = None
+    last_hour = None
+    soc_wh = INITIAL_SOC_WH
+
+    print("Starting time_proxy polling loop...")
+    try:
+        while True:
+            sim_ts = fetch_sim_time(args.time_proxy_url)
+            sim_dt = dt.datetime.fromtimestamp(sim_ts, LOCAL_TZ)
+
+            if sim_dt.date() > end:
+                print("Simulation range finished.")
+                break
+
+            if last_day != sim_dt.date():
+                last_day = sim_dt.date()
+                if last_day in daily_gen_wh:
+                    send_to_time_proxy(args.time_proxy_url, "solar_energy_daily_wh", daily_gen_wh[last_day], args.device)
+
+            current_hour = sim_dt.replace(minute=0, second=0, microsecond=0)
+            if last_hour != current_hour:
+                print(f"current_hour = {current_hour}")
+                last_hour = current_hour
+                gen_wh = hourly_gen_wh.get(current_hour, 0.0)
+                print(f"gen_wh={gen_wh}")
+                send_to_time_proxy(args.time_proxy_url, "solar_energy_hourly_wh", gen_wh, args.device)
+
+                consumed_wh = None
+                if query_api and influx_bucket:
+                    start_dt = current_hour - dt.timedelta(hours=1)
+                    end_dt = current_hour
+                    consumed_wh = query_consumed_wh(query_api, influx_bucket, start_dt, end_dt, args.wattmeter_device)
+                if consumed_wh is None:
+                    consumed_wh = args.load * 1.0
+
+                soc_wh = update_battery_soc(soc_wh, gen_wh, consumed_wh)
+                send_to_time_proxy(args.time_proxy_url, "battery_soc_wh", soc_wh, args.device)
+
+            time.sleep(1)
+    finally:
+        if influx_client:
+            influx_client.close()
 
 if __name__ == "__main__":
     main()

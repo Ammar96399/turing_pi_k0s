@@ -10,19 +10,19 @@ INFLUX_URL = "http://localhost:8086"
 TOKEN = "gE-akWY-Ws4RlOlOqV1Njk0S6Vmw-s7LDf3ULC3wP5Sr7MYBobcd2wDnvtqkeHKr9Stya0KlIbpaI4Qo0j9Auw=="
 ORG = "IRISA"
 BUCKET = "test"
-SIM_RATIO = 6.0 
+SIM_RATIO = 60.0 
 
 class SimClock:
     def __init__(self):
         self.real_start_time = time.time()
-        self.sim_start_timestamp = 1704067200
+        self.sim_start_timestamp = 1672527600
 
 clock = SimClock()
 client = InfluxDBClient(url=INFLUX_URL, token=TOKEN, org=ORG)
 write_api = client.write_api(write_options=SYNCHRONOUS)
 
 @app.post("/reset")
-def reset_clock(start_timestamp: int = 1704067200):
+def reset_clock(start_timestamp: int = 1672527600):
     """Resets the simulation clock to now."""
     clock.real_start_time = time.time()
     clock.sim_start_timestamp = start_timestamp
