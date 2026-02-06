@@ -28,6 +28,13 @@ def reset_clock(start_timestamp: int = 1704067200):
     clock.sim_start_timestamp = start_timestamp
     return {"status": "Simulation Reset", "sim_start": start_timestamp}
 
+@app.get("/time")
+def get_current_simulation_time():
+  """Gets the current simulation time"""
+  elapsed_real = time.time() - clock.real_start_time
+  sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)
+  return {"time": sim_now}
+
 @app.post("/data/{measurement}")
 def post_data(measurement: str, value: float, device: str = "unknown"):
     # 1. Calculate Virtual Time
