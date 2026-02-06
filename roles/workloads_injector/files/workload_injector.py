@@ -6,6 +6,9 @@ from pathlib import Path
 import sys
 import glob
 import os
+import urllib.parse
+import urllib.request
+import urllib.error
 
 OBSERVATORY = str(sys.argv[1]) if len(sys.argv) > 1 else "event_driven_observatory"
 WAIT_TIME = int(sys.argv[2]) if len(sys.argv) > 2 else 60
@@ -13,6 +16,7 @@ BROKER = "131.254.19.109"
 PORT = 5672
 BASE_PATH = f"/home/akazem/Documents/PhD/projects/energy_proportionality/cluster_configuration/turing_pi_emulation/roles/workloads_injector/files/{OBSERVATORY}/applications"
 EXCHANGE = OBSERVATORY
+TIME_PROXY_URL = os.getenv("TIME_PROXY_URL", "http://localhost:5000")
 
 credentials = pika.PlainCredentials("guest", "guest") 
 parameters = pika.ConnectionParameters(BROKER, PORT, "/", credentials)
@@ -21,11 +25,28 @@ channel = connection.channel()
 
 channel.exchange_declare(exchange=EXCHANGE, exchange_type="direct", durable=True)
 
+def send_bogos_requested_to_proxy(app_name: str, bogos_requested: float) -> bool:
+    params = urllib.parse.urlencode({
+        "value": float(bogos_requested),
+        "device": app_name,
+    })
+    url = f"{TIME_PROXY_URL.rstrip('/')}/data/bogos_requested?{params}"
+    req = urllib.request.Request(url, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return 200 <= resp.status < 300
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(f"time_proxy write failed: HTTP {e.code} {body}")
+        return False
+    except urllib.error.URLError as e:
+        print(f"time_proxy write failed: {e}")
+        return False
+
 def publish_cpu_loads(results_dict, minute):
     for folder_name, event_list in results_dict.items():
         try:
-            events_for_minute = event_list[minute] 
-    
+            events_for_minute = event_list[minute]     
             payload = {
                 "events": events_for_minute, 
                 "timestamp": time.time()
@@ -38,6 +59,8 @@ def publish_cpu_loads(results_dict, minute):
                 body=payload,
                 properties=pika.BasicProperties(expiration=f"{WAIT_TIME*1000}") # This makes messages disappear after the WAIT_TIME. It is important in the degradation experiment.
             )
+            send_bogos_requested_to_proxy(folder_name, events_for_minute)
+
             print(f"Published: {EXCHANGE}/{routing_key} -> events: {events_for_minute}")
         except IndexError:
             print(f"Warning: No event data available for minute {minute} in folder {folder_name}. Skipping publication.")
