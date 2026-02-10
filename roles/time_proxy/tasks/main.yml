@@ -1,0 +1,13 @@
+---
+- name: Run time_proxy on localhost in background
+  ansible.builtin.shell: bash -c 'python3 {{ role_path }}/files/time_proxy.py --sim-ratio {{ 60.0 / one_minute }} --experiment-id {{ experiment_id }} > {{ results_dir }}/time_proxy.log 2>&1 & echo $! > {{ results_dir }}/time_proxy.pid'
+  args:
+    chdir: "{{ role_path }}"
+  register: script_result
+
+- name: Wait for time_proxy to be ready
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 5000
+    delay: 1
+    timeout: 30
