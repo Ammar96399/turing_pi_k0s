@@ -12,32 +12,46 @@ INFLUX_URL = "http://localhost:8086"
 TOKEN = "gE-akWY-Ws4RlOlOqV1Njk0S6Vmw-s7LDf3ULC3wP5Sr7MYBobcd2wDnvtqkeHKr9Stya0KlIbpaI4Qo0j9Auw=="
 ORG = "IRISA"
 BUCKET = "test"
-SIM_RATIO: int | None = None
-EXPERIMENT_ID: str | None = None
+SIM_RATIO: int
+EXPERIMENT_ID: str
+
 
 class SimClock:
     def __init__(self):
         self.real_start_time = time.time()
         self.sim_start_timestamp = 1672527600
 
+
 clock = SimClock()
 client = InfluxDBClient(url=INFLUX_URL, token=TOKEN, org=ORG)
 write_api = client.write_api(write_options=SYNCHRONOUS)
 query_api = client.query_api()
 
+
 @app.post("/reset")
 def reset_clock(start_timestamp: int = 1672527600):
     """Resets the simulation clock to now."""
+    # Clear all data in the bucket
+    delete_api = client.delete_api()
+    delete_api.delete(
+        start=dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc),
+        stop=dt.datetime.now(dt.timezone.utc),
+        predicate="",
+        bucket=BUCKET,
+        org=ORG,
+    )
     clock.real_start_time = time.time()
     clock.sim_start_timestamp = start_timestamp
     return {"status": "Simulation Reset", "sim_start": start_timestamp}
 
+
 @app.get("/time")
 def get_current_simulation_time():
-  """Gets the current simulation time"""
-  elapsed_real = time.time() - clock.real_start_time
-  sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)
-  return {"time": sim_now}
+    """Gets the current simulation time"""
+    elapsed_real = time.time() - clock.real_start_time
+    sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)
+    return {"time": sim_now}
+
 
 @app.post("/data/{measurement}")
 def post_data(measurement: str, value: float, device: str = "unknown"):
@@ -48,26 +62,28 @@ def post_data(measurement: str, value: float, device: str = "unknown"):
     sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)
     # print(f"sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)")
     # print(f"{sim_now} = {clock.sim_start_timestamp} + ({elapsed_real} * {SIM_RATIO})")
-    
+
     # 2. Create Influx Point
-    point = Point(measurement) \
-        .tag("device", device) \
-        .field("value", value) \
+    point = (
+        Point(measurement)
+        .tag("device", device)
+        .field("value", value)
         .time(int(sim_now * 1e9), WritePrecision.NS)
+    )
     if EXPERIMENT_ID:
         point = point.tag("experiment_id", EXPERIMENT_ID)
-    
+
     # 3. Write to Influx
     write_api.write(bucket=BUCKET, org=ORG, record=point)
-    
+
     return {"sim_time": sim_now, "sent_value": value}
 
 
 @app.get("/data/{measurement}")
 def get_data(
     measurement: str,
-    device: str | None = None,
-    experiment_id: str | None = EXPERIMENT_ID,
+    device: str,
+    experiment_id: str,
     window_seconds: int = 3600,
 ):
     elapsed_real = time.time() - clock.real_start_time
@@ -81,12 +97,12 @@ def get_data(
     if experiment_id:
         filters.append(f'r.experiment_id == "{experiment_id}"')
 
-    flux = f'''
+    flux = f"""
 from(bucket: "{BUCKET}")
   |> range(start: {start_dt.isoformat()}, stop: {end_dt.isoformat()})
   |> filter(fn: (r) => {' and '.join(filters)})
   |> last()
-'''
+"""
 
     tables = query_api.query(flux)
     for table in tables:
@@ -107,10 +123,11 @@ from(bucket: "{BUCKET}")
         "time": None,
     }
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run time_proxy server")
-    parser.add_argument("--sim-ratio", type=float)
-    parser.add_argument("--experiment-id")
+    parser.add_argument("--sim-ratio", type=float, required=True)
+    parser.add_argument("--experiment-id", required=True)
     args = parser.parse_args()
 
     SIM_RATIO = args.sim_ratio
