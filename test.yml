@@ -111,6 +111,17 @@
   roles:
     - role: solar_energy_model
 
+- name: Start node control
+  hosts: server
+  gather_facts: true
+  become: false
+  roles:
+    - role: node_control
+  vars:
+    window_size: 15
+    min_threshold: 40
+    max_threshold: 70
+
 - name: Prepare injecting workloads
   hosts: localhost
   gather_facts: true
