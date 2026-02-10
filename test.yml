@@ -1,4 +1,11 @@
 ---
+#- name: Setup monitoring
+#  hosts: server
+#  gather_facts: true
+#  become: true
+#  roles:
+#    - role: monitoring
+
 # - name: Setup get request application
 #   hosts: server
 #   gather_facts: true
@@ -41,41 +48,87 @@
 #   roles:
 #     - role: app_energy_estimator
 
+- name: Manage results directory
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Clean results_dir
+      ansible.builtin.file:
+        path: "{{ results_dir }}"
+        state: absent
+
+    - name: Recreate results_dir
+      ansible.builtin.file:
+        path: "{{ results_dir }}"
+        state: directory
+        mode: "0755"
+
 - name: Run time_proxy
   hosts: localhost
   gather_facts: true
   roles:
     - role: time_proxy
+  vars:
+    reset_time_proxy: false
+
+- name: Run system measurements
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: system_measurements
 
 - name: Setup crd_creator
   hosts: server
   gather_facts: true
   roles:
     - role: crd_creator
+  vars:
+    reset_crd_creator: false
+
+- name: Setup qos_monitoring
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: qos_monitoring
+
+- name: Setup prometheus_to_time_proxy
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: prometheus_to_time_proxy
+
+- name: Reset time_proxy
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: time_proxy
+  vars:
+    reset_time_proxy: true
 
 - name: Run hourly solar energy model
   hosts: localhost
   gather_facts: true
   roles:
     - role: solar_energy_model
+
+- name: Prepare injecting workloads
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: workloads_injector_prep
+  vars:
+    # observatory: "event_driven_observatory"
+    # observatory: "long_term_observatory"
+    observatory: "nepal_scenario"
+
+- name: Inject workload
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: workloads_injector
+  vars:
+    # observatory: "event_driven_observatory"
+    # observatory: "long_term_observatory"
+    observatory: "nepal_scenario"
+
 # # *********** Get the energy budget and update the CRD *********** #
-
-# - name: Prepare injecting workloads
-#   hosts: localhost
-#   gather_facts: true
-#   roles:
-#     - role: workloads_injector_prep
-#   vars:
-#     # observatory: "event_driven_observatory"
-#     # observatory: "long_term_observatory"
-#     observatory: "nepal_scenario"
-
-# - name: Inject workload
-#   hosts: localhost
-#   gather_facts: true
-#   roles:
-#     - role: workloads_injector
-#   vars:
-#     # observatory: "event_driven_observatory"
-#     # observatory: "long_term_observatory"
-#     observatory: "nepal_scenario"

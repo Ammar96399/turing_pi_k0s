@@ -35,16 +35,23 @@
     # observatory: "long_term_observatory"
     observatory: "nepal_scenario"
 
-- name: Run nepal_scenario_observatory simulation
+
+- name: Setup monitoring
   hosts: server
   gather_facts: true
   become: true
   roles:
-    - role: deploy_applications
-  vars:
-    # observatory: "event_driven_observatory"
-    # observatory: "long_term_observatory"
-    observatory: "nepal_scenario"
+    - role: monitoring
+# - name: Run nepal_scenario_observatory simulation
+#  hosts: server
+#  gather_facts: true
+#  become: true
+#  roles:
+#    - role: deploy_applications
+#  vars:
+#    # observatory: "event_driven_observatory"
+#    # observatory: "long_term_observatory"
+#    observatory: "nepal_scenario"
 
 - name: Inject workload
   hosts: localhost

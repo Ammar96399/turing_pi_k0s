@@ -1,3 +1,4 @@
 distros/
 .venv/
 node_control_log.log
+k0s-kubeconfig.yml
