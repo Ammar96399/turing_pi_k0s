@@ -62,9 +62,10 @@ def estimate_energy_24h(bogos: float) -> float:
 				power_watts = power_data[sorted_loads[0]]
 			else:
 				power_watts = power_data[sorted_loads[-1]]
-	
-	watt_hours = power_watts * 24
-	
+    
+	# The 13 Wh added is the energy consumption of the idle Turing Pi with 2 x RK1 and a CM4 on.	
+	watt_hours = power_watts * 24 + 10 
+ 
 	return round(watt_hours, 4)
 	
 class WorkloadResponse(BaseModel):
