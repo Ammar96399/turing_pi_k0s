@@ -40,57 +40,18 @@
       apiGroup: rbac.authorization.k8s.io
     EOF
 
-- name: Check if Docker is installed
-  ansible.builtin.stat:
-    path: /usr/bin/docker
-  register: docker_installed
-
-- name: Check docker in PATH
-  ansible.builtin.command: docker --version
-  register: docker_version
-  failed_when: false
-  changed_when: false
-
-- name: Download Docker installation script
-  ansible.builtin.get_url:
-    url: https://test.docker.com
-    dest: /tmp/get-docker.sh
-    mode: "0755"
-  when: not docker_installed.stat.exists and docker_version.rc != 0
-
-- name: Execute Docker installation script
-  ansible.builtin.command:
-    cmd: sh /tmp/get-docker.sh
-  args:
-    creates: /usr/bin/docker
-  when: not docker_installed.stat.exists and docker_version.rc != 0
-  register: docker_install_result
-  changed_when: docker_install_result.rc == 0
-
-- name: Ensure Docker service is running
-  ansible.builtin.service:
-    name: docker
-    state: started
-    enabled: true
-  when: not docker_installed.stat.exists and docker_version.rc != 0
-
-- name: Add user to docker group
-  ansible.builtin.user:
-    name: "{{ ansible_user_id | default(ansible_user) }}"
-    groups: docker
-    append: true
-  when: not docker_installed.stat.exists and docker_version.rc != 0
-
 - name: Create the crd_creator build directory
   ansible.builtin.file:
     path: "{{ ansible_env.HOME }}/crd_creator"
     state: directory
     mode: "0755"
+  when: reset_crd_creator | default(false)
 
 - name: Delete the crd_creator build directory if exists
   ansible.builtin.file:
     path: "{{ ansible_env.HOME }}/crd_creator"
     state: absent
+  when: reset_crd_creator | default(false)
 
 - name: Recreate the crd_creator build directory
   ansible.builtin.file:
@@ -129,6 +90,7 @@
 - name: Remove docker image
   ansible.builtin.command: sudo docker image rm crd-creator:local
   ignore_errors: true
+  when: reset_crd_creator | default(false)
 
 - name: Build the docker image
   community.docker.docker_image:
@@ -138,28 +100,33 @@
     name: crd-creator
     source: build
     tag: local
+  when: reset_crd_creator | default(false)
 
 - name: Check if the docker image tar file exists
   ansible.builtin.stat:
     path: "{{ ansible_env.HOME }}/crd_creator/crd-creator.tar"
   register: docker_image_tar
+  when: reset_crd_creator | default(false)
 
 - name: Delete the docker image tar file
   ansible.builtin.file:
     path: "{{ ansible_env.HOME }}/crd_creator/crd-creator.tar"
     state: absent
-  when: docker_image_tar.stat.exists
+  when: docker_image_tar.stat.exists | default(false) and reset_crd_creator | default(false)
 
 - name: Save the docker image to a tar file
   ansible.builtin.shell: |
     docker save crd-creator:local > "{{ ansible_env.HOME }}/crd_creator/crd-creator.tar"
+  when: reset_crd_creator | default(false)
 
 - name: Remove the docker image from the master node
   ansible.builtin.command: sudo k0s ctr images rm docker.io/library/crd-creator:local
   ignore_errors: true
+  when: reset_crd_creator | default(false)
 
 - name: Import the docker image to the master node
   ansible.builtin.command: sudo k0s ctr images import {{ ansible_facts['env']['HOME'] }}/crd_creator/crd-creator.tar
+  when: reset_crd_creator | default(false)
 
 - name: Delete crd-creator deployment if it exists
   ansible.builtin.command: >
