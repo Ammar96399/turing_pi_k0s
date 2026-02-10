@@ -33,6 +33,14 @@ turing_pi_cluster:
     solar_lon: 8
     solar_start: "2023-01-01"
     solar_end: "2023-01-07"
+    stc_irradiance: 1000.0
+    system_losses: 0.14
+    battery_capacity_wh: 1024.0
+    initial_soc_wh: 1024.0
+    max_charge_w: 800.0
+    charge_efficiency: 0.95
+    discharge_efficiency: 0.94
+    tz_offset_hours: 1
     # airgap_dir: /tmp/k3s-airgap-images
     # server_config_yaml:   # This should be set if you want to use a custom k3s server config
 
@@ -54,3 +62,11 @@ localhost:
     solar_lon: 8
     solar_start: "2023-01-01"
     solar_end: "2023-01-07"
+    stc_irradiance: 1000.0
+    system_losses: 0.14
+    battery_capacity_wh: 1024.0
+    initial_soc_wh: 1024.0
+    max_charge_w: 800.0
+    charge_efficiency: 0.95
+    discharge_efficiency: 0.94
+    tz_offset_hours: 1

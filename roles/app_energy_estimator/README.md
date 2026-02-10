@@ -11,3 +11,17 @@ For the heterogeneous nature of the cluster, I did something similar too. I took
 
 ## Problems
 Unless a workload needs more processing power that what 2 RK1 can provide, the estimation will always be equal to what an estimation on an RK1 alone is. 
+
+
+**This is an update a couple days later (09/02/2026):** 
+The energy consumed by the idle plateform cannot be neglacted and should be added to the energy consumption of the applications. 
+
+| | Turing Pi | RK1 | CM4 | 
+|---|---|---|---|
+| **Power** | 3.73 W | 1.95 W | 2.17 W |
+| **Energy Per Day** | 90 Wh | 47 Wh | 52 Wh |
+
+*Table 1 - The power and energy consumption of the idle plateform*
+
+In Table 1, we can see that the energy consumption of the idle nodes can be quite high. This is why I think it should be included in the energy consumption calculations. 
+One way of doing that would be to divide the total energy consumption of 236 Wh per day, assuming that all the nodes are constantly running, between all the applications. So if we have a total of 23 applications the energy each one would get would be: 236/23 = 10.3 Wh per day. 

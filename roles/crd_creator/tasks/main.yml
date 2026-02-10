@@ -161,27 +161,32 @@
 - name: Import the docker image to the master node
   ansible.builtin.command: sudo k0s ctr images import {{ ansible_facts['env']['HOME'] }}/crd_creator/crd-creator.tar
 
-- name: Delete crd-creator job if it exists
+- name: Delete crd-creator deployment if it exists
   ansible.builtin.command: >
     k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
-    delete job crd-creator
+    delete deployment crd-creator
     -n lp-schedules-operator
     --ignore-not-found
   changed_when: false
 
-- name: Run crd-creator job
+- name: Run crd-creator deployment
   ansible.builtin.shell: |
     k0s kubectl --kubeconfig {{ k3s_kubeconfig }} apply -f - <<EOF
-    apiVersion: batch/v1
-    kind: Job
+    apiVersion: apps/v1
+    kind: Deployment
     metadata:
       name: crd-creator
       namespace: lp-schedules-operator
     spec:
-      backoffLimit: 0
+      replicas: 1
+      selector:
+        matchLabels:
+          app: crd-creator
       template:
+        metadata:
+          labels:
+            app: crd-creator
         spec:
-          restartPolicy: Never
           nodeSelector:
             role: server
           serviceAccountName: crd-creator
@@ -189,14 +194,5 @@
             - name: crd-creator
               image: docker.io/library/crd-creator:local
               imagePullPolicy: Never
-              command: ["python", "/app/generate_crd_with_energy.py", "--input", "/app/lpschedule_template.yml", "--output", "/app/test.energy.yml"]
+              command: ["python", "/app/generate_crd_with_energy.py", "--input", "/app/lpschedule_template.yml", "--output", "/app/test.energy.yml", "--experiment-id", "{{ experiment_id }}"]
     EOF
-
-- name: Wait for crd-creator job to complete
-  ansible.builtin.command: >
-    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
-    -n lp-schedules-operator
-    wait --for=condition=complete
-    --timeout=300s
-    job/crd-creator
-  changed_when: false

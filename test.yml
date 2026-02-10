@@ -34,13 +34,6 @@
 #   roles:
 #     - role: deploy_applications_prereq
 
-- name: Setup solar_energy_model
-  hosts: server
-  gather_facts: true
-  become: true
-  roles:
-    - role: solar_energy_model
-
 # - name: Setup app_energy_estimator
 #   hosts: server
 #   gather_facts: true
@@ -48,11 +41,23 @@
 #   roles:
 #     - role: app_energy_estimator
 
+- name: Run time_proxy
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: time_proxy
+
 - name: Setup crd_creator
   hosts: server
   gather_facts: true
   roles:
     - role: crd_creator
+
+- name: Run hourly solar energy model
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: solar_energy_model
 # # *********** Get the energy budget and update the CRD *********** #
 
 # - name: Prepare injecting workloads
