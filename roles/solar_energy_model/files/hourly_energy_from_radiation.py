@@ -8,18 +8,17 @@ import urllib.request
 import urllib.error
 from influxdb_client import InfluxDBClient
 
-# --- CONSTANTS FOR SIMULATION ---
-STC_IRRADIANCE = 1000.0  # W/m2 (Standard Test Condition)
-SYSTEM_LOSSES = 0.14     # 14% (cabling, inverter, dirt)
+# --- CONSTANTS FOR SIMULATION (set via CLI args) ---
+STC_IRRADIANCE: float | None = None  # W/m2 (Standard Test Condition)
+SYSTEM_LOSSES: float | None = None   # fraction (cabling, inverter, dirt)
 
-# Converted to Wh (10kWh -> 10000Wh)
-BATTERY_CAPACITY_WH = 100.0
-INITIAL_SOC_WH = 100.0
-MAX_CHARGE_W = 50.0      # Max power battery can take in Watts
+BATTERY_CAPACITY_WH: float | None = None
+INITIAL_SOC_WH: float | None = None
+MAX_CHARGE_W: float | None = None
 
-CHARGE_EFFICIENCY = 0.95 
-DISCHARGE_EFFICIENCY = 0.94
-LOCAL_TZ = dt.timezone(dt.timedelta(hours=1))
+CHARGE_EFFICIENCY: float | None = None
+DISCHARGE_EFFICIENCY: float | None = None
+LOCAL_TZ: dt.tzinfo | None = None
 
 def parse_date(s: str) -> dt.date:
     return dt.datetime.strptime(s, "%Y-%m-%d").date()
@@ -164,12 +163,38 @@ def main():
     p.add_argument("--lon", type=float, required=True)
     p.add_argument("--start", required=True)
     p.add_argument("--end", required=True)
-    p.add_argument("--wp", type=float, default=100.0, help="Solar Peak Power in Watts")
+    p.add_argument("--stc-irradiance", type=float, required=True)
+    p.add_argument("--system-losses", type=float, required=True)
+    p.add_argument("--battery-capacity-wh", type=float, required=True)
+    p.add_argument("--initial-soc-wh", type=float, required=True)
+    p.add_argument("--max-charge-w", type=float, required=True)
+    p.add_argument("--charge-efficiency", type=float, required=True)
+    p.add_argument("--discharge-efficiency", type=float, required=True)
+    p.add_argument("--tz-offset-hours", type=float, required=True)
+    p.add_argument("--wp", type=float, default=150.0, help="Solar Peak Power in Watts")
     p.add_argument("--load", type=float, default=5.0, help="Fallback hourly load in Watts")
     p.add_argument("--device", default="solar_model", help="Device tag to send with data")
     p.add_argument("--wattmeter-device", default="wattmeter", help="Device tag for power_W")
     p.add_argument("--time-proxy-url", default=os.getenv("TIME_PROXY_URL", "http://localhost:5000"))
     args = p.parse_args()
+
+    global STC_IRRADIANCE
+    global SYSTEM_LOSSES
+    global BATTERY_CAPACITY_WH
+    global INITIAL_SOC_WH
+    global MAX_CHARGE_W
+    global CHARGE_EFFICIENCY
+    global DISCHARGE_EFFICIENCY
+    global LOCAL_TZ
+
+    STC_IRRADIANCE = args.stc_irradiance
+    SYSTEM_LOSSES = args.system_losses
+    BATTERY_CAPACITY_WH = args.battery_capacity_wh
+    INITIAL_SOC_WH = args.initial_soc_wh
+    MAX_CHARGE_W = args.max_charge_w
+    CHARGE_EFFICIENCY = args.charge_efficiency
+    DISCHARGE_EFFICIENCY = args.discharge_efficiency
+    LOCAL_TZ = dt.timezone(dt.timedelta(hours=args.tz_offset_hours))
 
     start, end = parse_date(args.start), parse_date(args.end)
     
