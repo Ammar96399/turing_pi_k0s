@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+import argparse
 import time
+import datetime as dt
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 import uvicorn
@@ -10,7 +12,8 @@ INFLUX_URL = "http://localhost:8086"
 TOKEN = "gE-akWY-Ws4RlOlOqV1Njk0S6Vmw-s7LDf3ULC3wP5Sr7MYBobcd2wDnvtqkeHKr9Stya0KlIbpaI4Qo0j9Auw=="
 ORG = "IRISA"
 BUCKET = "test"
-SIM_RATIO = 60.0 
+SIM_RATIO: int | None = None
+EXPERIMENT_ID: str | None = None
 
 class SimClock:
     def __init__(self):
@@ -20,6 +23,7 @@ class SimClock:
 clock = SimClock()
 client = InfluxDBClient(url=INFLUX_URL, token=TOKEN, org=ORG)
 write_api = client.write_api(write_options=SYNCHRONOUS)
+query_api = client.query_api()
 
 @app.post("/reset")
 def reset_clock(start_timestamp: int = 1672527600):
@@ -50,12 +54,67 @@ def post_data(measurement: str, value: float, device: str = "unknown"):
         .tag("device", device) \
         .field("value", value) \
         .time(int(sim_now * 1e9), WritePrecision.NS)
+    if EXPERIMENT_ID:
+        point = point.tag("experiment_id", EXPERIMENT_ID)
     
     # 3. Write to Influx
     write_api.write(bucket=BUCKET, org=ORG, record=point)
     
     return {"sim_time": sim_now, "sent_value": value}
 
+
+@app.get("/data/{measurement}")
+def get_data(
+    measurement: str,
+    device: str | None = None,
+    experiment_id: str | None = EXPERIMENT_ID,
+    window_seconds: int = 3600,
+):
+    elapsed_real = time.time() - clock.real_start_time
+    sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)
+    end_dt = dt.datetime.fromtimestamp(sim_now, dt.timezone.utc)
+    start_dt = end_dt - dt.timedelta(seconds=window_seconds)
+
+    filters = [f'r._measurement == "{measurement}"', 'r._field == "value"']
+    if device:
+        filters.append(f'r.device == "{device}"')
+    if experiment_id:
+        filters.append(f'r.experiment_id == "{experiment_id}"')
+
+    flux = f'''
+from(bucket: "{BUCKET}")
+  |> range(start: {start_dt.isoformat()}, stop: {end_dt.isoformat()})
+  |> filter(fn: (r) => {' and '.join(filters)})
+  |> last()
+'''
+
+    tables = query_api.query(flux)
+    for table in tables:
+        for record in table.records:
+            return {
+                "measurement": measurement,
+                "device": device,
+                "experiment_id": experiment_id,
+                "value": record.get_value(),
+                "time": record.get_time().isoformat(),
+            }
+
+    return {
+        "measurement": measurement,
+        "device": device,
+        "experiment_id": experiment_id,
+        "value": None,
+        "time": None,
+    }
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run time_proxy server")
+    parser.add_argument("--sim-ratio", type=float)
+    parser.add_argument("--experiment-id")
+    args = parser.parse_args()
+
+    SIM_RATIO = args.sim_ratio
+    EXPERIMENT_ID = args.experiment_id
+
     # Listen on all interfaces so outside devices can reach it
     uvicorn.run(app, host="0.0.0.0", port=5000)
