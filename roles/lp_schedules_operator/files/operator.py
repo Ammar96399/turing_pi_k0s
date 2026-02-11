@@ -13,7 +13,6 @@ RETRY_DELAY_SECONDS = 3
 @kopf.on.create('graceful-degradation.io', 'v0', 'lpschedules')
 @kopf.on.update('graceful-degradation.io', 'v0', 'lpschedules')
 def handle_optimization(spec, namespace, logger, **kwargs):
-    
     payload = {
         "budget": spec.get('budget', 0),
         "applications": spec.get('applications', {})

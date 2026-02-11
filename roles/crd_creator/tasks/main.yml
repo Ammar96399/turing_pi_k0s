@@ -6,6 +6,25 @@
   ignore_errors: true
   changed_when: false
 
+- name: Delete crd if it exists
+  ansible.builtin.command: >
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
+    delete crd lpschedules.graceful-degradation.io
+    --ignore-not-found
+  changed_when: false
+
+- name: Render LPSchedule CRD
+  ansible.builtin.template:
+    src: "{{ role_path }}/../lp_schedules_operator/templates/crd.yaml.j2"
+    dest: "/tmp/lpschedule_crd.yaml"
+    mode: "0644"
+
+- name: Apply LPSchedule CRD
+  ansible.builtin.command: >
+    k0s kubectl --kubeconfig {{ k3s_kubeconfig }}
+    apply -f /tmp/lpschedule_crd.yaml
+  changed_when: false
+
 - name: Ensure crd-creator RBAC
   ansible.builtin.shell: |
     k0s kubectl --kubeconfig {{ k3s_kubeconfig }} apply -f - <<EOF

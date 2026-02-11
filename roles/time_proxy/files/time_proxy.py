@@ -15,7 +15,6 @@ BUCKET = "test"
 SIM_RATIO: int
 EXPERIMENT_ID: str
 
-
 class SimClock:
     def __init__(self):
         self.real_start_time = time.time()

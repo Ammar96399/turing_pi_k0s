@@ -3,17 +3,23 @@ import datetime as dt
 import os
 import time
 import json
+import logging
 import urllib.parse
 import urllib.request
 import urllib.error
-from influxdb_client import InfluxDBClient
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # --- CONSTANTS FOR SIMULATION (set via CLI args) ---
 STC_IRRADIANCE: float  # W/m2 (Standard Test Condition)
-SYSTEM_LOSSES: float   # fraction (cabling, inverter, dirt)
+SYSTEM_LOSSES: float  # fraction (cabling, inverter, dirt)
 
-BATTERY_CAPACITY_WH: float 
-INITIAL_SOC_WH: float 
+BATTERY_CAPACITY_WH: float
+INITIAL_SOC_WH: float
 MAX_CHARGE_W: float
 
 CHARGE_EFFICIENCY: float
@@ -35,6 +41,7 @@ def fetch_csv(lat, lon, start, end):
         "timeinterval": "1",
     }
     url = "https://re.jrc.ec.europa.eu/api/seriescalc?" + urllib.parse.urlencode(params)
+    logger.info("Fetching PVGIS CSV from %s", url)
     with urllib.request.urlopen(url) as r:
         return r.read().decode("utf-8")
 
@@ -73,14 +80,51 @@ def send_to_time_proxy(
     req = urllib.request.Request(url, method="POST")
     try:
         with urllib.request.urlopen(req) as resp:
-            return 200 <= resp.status < 300
+            ok = 200 <= resp.status < 300
+            if ok:
+                logger.debug(
+                    "time_proxy write ok: measurement=%s value=%.4f device=%s",
+                    measurement,
+                    value,
+                    device,
+                )
+            return ok
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        print(f"time_proxy write failed: HTTP {e.code} {body}")
+        logger.error("time_proxy write failed: HTTP %s %s", e.code, body)
         return False
     except urllib.error.URLError as e:
-        print(f"time_proxy write failed: {e}")
+        logger.error("time_proxy write failed: %s", e)
         return False
+
+
+def fetch_from_time_proxy(
+    time_proxy_url: str,
+    measurement: str,
+    device: str,
+    experiment_id: str,
+    window_seconds: int,
+):
+    params = urllib.parse.urlencode(
+        {
+            "device": device,
+            "experiment_id": experiment_id,
+            "window_seconds": window_seconds,
+        }
+    )
+    url = f"{time_proxy_url.rstrip('/')}/data/{measurement}?{params}"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            return payload
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        logger.error("time_proxy read failed: HTTP %s %s", e.code, body)
+        return None
+    except urllib.error.URLError as e:
+        logger.error("time_proxy read failed: %s", e)
+        return None
 
 
 def build_hourly_generation_map(header, rows, start_date, end_date, wp):
@@ -103,21 +147,23 @@ def build_hourly_generation_map(header, rows, start_date, end_date, wp):
     return hourly_gen_wh, daily_gen_wh
 
 
-def query_consumed_wh(query_api, bucket, start_dt, end_dt, wattmeter_device):
-    start_iso = start_dt.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
-    end_iso = end_dt.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
-    flux = f"""
-from(bucket: "{bucket}")
-  |> range(start: {start_iso}, stop: {end_iso})
-  |> filter(fn: (r) => r._measurement == "power_W" and r._field == "value" and r.device == "{wattmeter_device}")
-  |> integral(unit: 1h)
-"""
-    tables = query_api.query(flux)
-    total = 0.0
-    for table in tables:
-        for record in table.records:
-            total += float(record.get_value())
-    return total
+def query_consumed_wh(
+    time_proxy_url: str,
+    wattmeter_device: str,
+    experiment_id: str,
+    window_seconds: int,
+):
+    payload = fetch_from_time_proxy(
+        time_proxy_url,
+        "power_W",
+        wattmeter_device,
+        experiment_id,
+        window_seconds,
+    )
+    if not payload:
+        return 0.0
+    value = payload.get("value")
+    return float(value) if value is not None else 0.0
 
 
 def update_battery_soc(soc_wh, gen_wh, consumed_wh):
@@ -210,7 +256,14 @@ def main():
     p.add_argument(
         "--time-proxy-url", default=os.getenv("TIME_PROXY_URL", "http://localhost:5000")
     )
+    p.add_argument("--experiment-id", default=os.getenv("EXPERIMENT_ID", ""))
+    p.add_argument(
+        "--consumption-window-seconds",
+        type=int,
+        default=int(os.getenv("CONSUMPTION_WINDOW_SECONDS", "3600")),
+    )
     args = p.parse_args()
+    logger.info("Starting solar model with args: %s", args)
 
     global STC_IRRADIANCE
     global SYSTEM_LOSSES
@@ -232,48 +285,42 @@ def main():
 
     start, end = parse_date(args.start), parse_date(args.end)
 
-    print("Fetching data from PVGIS...")
+    logger.info("Fetching data from PVGIS...")
     csv_text = fetch_csv(args.lat, args.lon, start, end)
     header, rows = parse_pvgis_csv(csv_text)
     if not header or not rows:
         raise RuntimeError(
             "PVGIS returned no hourly data. Check date range and API parameters."
         )
+    logger.info("PVGIS data loaded: %d rows", len(rows))
     hourly_gen_wh, daily_gen_wh = build_hourly_generation_map(
         header, rows, start, end, args.wp
     )
-
-    influx_url = os.getenv("INFLUX_URL")
-    influx_token = os.getenv("INFLUX_TOKEN")
-    influx_org = os.getenv("INFLUX_ORG")
-    influx_bucket = os.getenv("INFLUX_BUCKET")
-    influx_client = None
-    query_api = None
-    if influx_url and influx_token and influx_org and influx_bucket:
-        influx_client = InfluxDBClient(
-            url=influx_url, token=influx_token, org=influx_org
-        )
-        query_api = influx_client.query_api()
-    else:
-        print("InfluxDB env vars missing; will use fallback load.")
+    logger.info(
+        "Generated hourly and daily maps: hourly=%d daily=%d",
+        len(hourly_gen_wh),
+        len(daily_gen_wh),
+    )
 
     last_day = None
     last_hour = None
     soc_wh = INITIAL_SOC_WH
 
-    print("Starting time_proxy polling loop...")
+    logger.info("Starting time_proxy polling loop...")
     try:
         while True:
             sim_ts = fetch_sim_time(args.time_proxy_url)
             sim_dt = dt.datetime.fromtimestamp(sim_ts, LOCAL_TZ)
+            logger.debug("Sim time: %s", sim_dt.isoformat())
 
             if sim_dt.date() > end:
-                print("Simulation range finished.")
+                logger.info("Simulation range finished.")
                 break
 
             if last_day != sim_dt.date():
                 last_day = sim_dt.date()
                 if last_day in daily_gen_wh:
+                    logger.info("Sending daily energy for %s", last_day.isoformat())
                     send_to_time_proxy(
                         args.time_proxy_url,
                         "solar_energy_daily_wh",
@@ -283,35 +330,31 @@ def main():
 
             current_hour = sim_dt.replace(minute=0, second=0, microsecond=0)
             if last_hour != current_hour:
-                print(f"current_hour = {current_hour}")
+                logger.info("New hour: %s", current_hour.isoformat())
                 last_hour = current_hour
                 gen_wh = hourly_gen_wh.get(current_hour, 0.0)
-                print(f"gen_wh={gen_wh}")
+                logger.info("Hourly generation: %.2f Wh", gen_wh)
                 send_to_time_proxy(
                     args.time_proxy_url, "solar_energy_hourly_wh", gen_wh, args.device
                 )
 
-                consumed_wh = 0.0
-                if query_api and influx_bucket:
-                    start_dt = current_hour - dt.timedelta(hours=1)
-                    end_dt = current_hour
-                    consumed_wh = query_consumed_wh(
-                        query_api,
-                        influx_bucket,
-                        start_dt,
-                        end_dt,
-                        args.wattmeter_device,
-                    )
+                consumed_wh = query_consumed_wh(
+                    args.time_proxy_url,
+                    args.wattmeter_device,
+                    args.experiment_id,
+                    args.consumption_window_seconds,
+                )
+                logger.info("Consumed energy: %.2f Wh", consumed_wh)
 
                 soc_wh = update_battery_soc(soc_wh, gen_wh, consumed_wh)
+                logger.info("Battery SoC: %.2f Wh", soc_wh)
                 send_to_time_proxy(
                     args.time_proxy_url, "battery_soc_wh", soc_wh, args.device
                 )
 
             time.sleep(1)
     finally:
-        if influx_client:
-            influx_client.close()
+        pass
 
 
 if __name__ == "__main__":

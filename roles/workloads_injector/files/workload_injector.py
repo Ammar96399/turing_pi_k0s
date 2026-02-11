@@ -9,6 +9,7 @@ import os
 import urllib.parse
 import urllib.request
 import urllib.error
+import logging
 
 OBSERVATORY = str(sys.argv[1]) if len(sys.argv) > 1 else "event_driven_observatory"
 WAIT_TIME = int(sys.argv[2]) if len(sys.argv) > 2 else 60
@@ -18,18 +19,27 @@ BASE_PATH = f"/home/akazem/Documents/PhD/projects/energy_proportionality/cluster
 EXCHANGE = OBSERVATORY
 TIME_PROXY_URL = os.getenv("TIME_PROXY_URL", "http://localhost:5000")
 
-credentials = pika.PlainCredentials("guest", "guest") 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+credentials = pika.PlainCredentials("guest", "guest")
 parameters = pika.ConnectionParameters(BROKER, PORT, "/", credentials)
 connection = pika.BlockingConnection(parameters)
 channel = connection.channel()
 
 channel.exchange_declare(exchange=EXCHANGE, exchange_type="direct", durable=True)
 
+
 def send_bogos_requested_to_proxy(app_name: str, bogos_requested: float) -> bool:
-    params = urllib.parse.urlencode({
-        "value": float(bogos_requested),
-        "device": app_name,
-    })
+    params = urllib.parse.urlencode(
+        {
+            "value": float(bogos_requested),
+            "device": app_name,
+        }
+    )
     url = f"{TIME_PROXY_URL.rstrip('/')}/data/bogos_requested?{params}"
     req = urllib.request.Request(url, method="POST")
     try:
@@ -37,35 +47,43 @@ def send_bogos_requested_to_proxy(app_name: str, bogos_requested: float) -> bool
             return 200 <= resp.status < 300
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        print(f"time_proxy write failed: HTTP {e.code} {body}")
+        logger.error("time_proxy write failed: HTTP %s %s", e.code, body)
         return False
     except urllib.error.URLError as e:
-        print(f"time_proxy write failed: {e}")
+        logger.error("time_proxy write failed: %s", e)
         return False
+
 
 def publish_cpu_loads(results_dict, minute):
     for folder_name, event_list in results_dict.items():
         try:
-            events_for_minute = event_list[minute]     
-            payload = {
-                "events": events_for_minute, 
-                "timestamp": time.time()
-            }
+            events_for_minute = event_list[minute]
+            payload = {"events": events_for_minute, "timestamp": time.time()}
             payload = json.dumps(payload).encode()
             routing_key = folder_name
             channel.basic_publish(
                 exchange=EXCHANGE,
                 routing_key=routing_key,
                 body=payload,
-                properties=pika.BasicProperties(expiration=f"{WAIT_TIME*1000}") # This makes messages disappear after the WAIT_TIME. It is important in the degradation experiment.
+                properties=pika.BasicProperties(
+                    expiration=f"{WAIT_TIME*1000}"
+                ),  # This makes messages disappear after the WAIT_TIME. It is important in the degradation experiment.
             )
             send_bogos_requested_to_proxy(folder_name, events_for_minute)
-
-            print(f"Published: {EXCHANGE}/{routing_key} -> events: {events_for_minute}")
+            logger.info(
+                "Published: %s/%s -> events: %s",
+                EXCHANGE,
+                routing_key,
+                events_for_minute,
+            )
         except IndexError:
-            print(f"Warning: No event data available for minute {minute} in folder {folder_name}. Skipping publication.")
+            logger.warning(
+                "No event data for minute %s in folder %s. Skipping publication.",
+                minute,
+                folder_name,
+            )
         except Exception as e:
-            print(f"Error publishing for folder {folder_name}: {e}")
+            logger.error("Error publishing for folder %s: %s", folder_name, e)
 
 
 def read_events_from_csv_files(base_folder_path):
@@ -82,47 +100,48 @@ def read_events_from_csv_files(base_folder_path):
                     reader = csv.DictReader(file)
                     for row in reader:
                         try:
-                            events = round(float(row["cpu_rate"]) * 110) 
+                            events = round(float(row["cpu_rate"]) * 110)
                             workload_result.append(events)
                         except (ValueError, KeyError) as e:
-                            print(f"Error processing row in {csv_files[0]}: {e}. Skipping row.")
+                            logger.warning(
+                                "Error processing row in %s: %s. Skipping row.",
+                                csv_files[0],
+                                e,
+                            )
                             continue
                 results_dict[folder_name] = workload_result
             except Exception as e:
-                print(f"Error reading file {csv_files[0]}: {e}")
-                continue 
+                logger.error("Error reading file %s: %s", csv_files[0], e)
+                continue
     return results_dict
 
 
 def process_workload_folders():
     results = read_events_from_csv_files(BASE_PATH)
-    print(len(results))
     first_element = next(iter(results.items()))
     max_minutes = len(first_element[1])
+    # max_minutes = 60
     base_path = Path(BASE_PATH)
     for minute in range(0, max_minutes + 1):
         if minute == max_minutes:
-            print("Sending a finish message...")
-            for item in os.listdir(base_path):
-                folder_path = base_path / item
-                if folder_path.is_dir():
-                    folder_name = item
-                else: 
+            logger.info("Sending a finish message...")
+            for folder_name, event_list in results.items():
+                logger.info("Finishing folder %s", folder_name)
+                folder_path = base_path / folder_name
+                if not folder_path.is_dir():
                     return 0
                 payload = json.dumps({"events": -1, "timestamp": time.time()}).encode()
                 channel.basic_publish(
                     exchange=EXCHANGE,
                     routing_key=folder_name,
                     body=payload,
-                    properties=pika.BasicProperties(
-                        delivery_mode=2  
-                    )
+                    properties=pika.BasicProperties(delivery_mode=2),
                 )
-        else: 
+        else:
             publish_cpu_loads(results, minute)
             time.sleep(WAIT_TIME)
 
-    print("Finished publishing all workload folders.")
+            logger.info("Finished publishing all workload folders.")
 
 
 def log_unix_time(file_path):
@@ -131,15 +150,18 @@ def log_unix_time(file_path):
     with open(log_file_path, "a") as log_file:
         log_file.write(f"{round(time.time())}\n")
 
+
 if __name__ == "__main__":
-    print(f"Base path: {BASE_PATH}")
-    print(f"Exchange: {EXCHANGE}")
-    print(f"Waiting time between lines: {WAIT_TIME} seconds")
+    logger.info("Base path: %s", BASE_PATH)
+    logger.info("Exchange: %s", EXCHANGE)
+    logger.info("Waiting time between lines: %s seconds", WAIT_TIME)
     try:
         process_workload_folders()
         time.sleep(WAIT_TIME)
         connection.close()
-        log_unix_time("/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/degradation/nepal_scenario/test_1/experiment_end_time.txt")
+        log_unix_time(
+            "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/degradation/nepal_scenario/test_1/experiment_end_time.txt"
+        )
     except KeyboardInterrupt:
-        print("Process interrupted by user.")
+        logger.info("Process interrupted by user.")
         connection.close()
