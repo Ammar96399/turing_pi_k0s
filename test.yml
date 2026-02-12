@@ -79,6 +79,13 @@
       ansible.builtin.shell: |
         k0s kubectl delete jobs --all -n simulation --ignore-not-found=true
 
+- name: Run application preparation
+  hosts: turing_pi_cluster
+  gather_facts: true
+  become: true
+  roles:
+    - role: deploy_applications_prereq
+
 - name: Run time_proxy
   hosts: localhost
   gather_facts: true
@@ -141,9 +148,9 @@
   roles:
     - role: node_control
   vars:
-    window_size: 15
+    window_size: 30
     min_threshold: 40
-    max_threshold: 70
+    max_threshold: 90
 
 - name: Prepare injecting workloads
   hosts: localhost

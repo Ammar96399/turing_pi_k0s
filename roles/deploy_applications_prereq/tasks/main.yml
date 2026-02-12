@@ -87,24 +87,6 @@
     group: "{{ ansible_user }}"
     force: true
 
-- name: Copy the get_request script
-  ansible.builtin.copy:
-    src: get_request.py
-    dest: "/home/{{ ansible_user }}/simulation/{{ workload }}_simulation"
-    mode: "0755"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    force: true
-
-- name: Copy the get_limit script
-  ansible.builtin.copy:
-    src: get_limit.py
-    dest: "/home/{{ ansible_user }}/simulation/{{ workload }}_simulation"
-    mode: "0755"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    force: true
-
 - name: Remove docker image
   ansible.builtin.command: sudo docker image rm application-simulator:local
   ignore_errors: true
@@ -140,58 +122,11 @@
 - name: Import the docker image to the nodes
   ansible.builtin.command: sudo k0s ctr images import /home/{{ ansible_user }}/simulation/application-simulator.tar
 
-- name: Delete simulation namespace if it exists
-  ansible.builtin.shell: |
-    k0s kubectl delete namespace simulation --ignore-not-found
-  ignore_errors: true
-
 - name: Ensure simulation namespace exists
   ansible.builtin.shell: |
     k0s kubectl create namespace simulation --dry-run=client -o yaml | k0s kubectl apply -f -
   ignore_errors: true
 
-- name: Create ServiceAccount for node label access
+- name: Delete jobs in simulation namespace
   ansible.builtin.shell: |
-    k0s kubectl apply -f - <<EOF
-    apiVersion: v1
-    kind: ServiceAccount
-    metadata:
-      name: node-reader
-      namespace: simulation
-    EOF
-  register: sa_result
-  failed_when: sa_result.rc != 0
-
-- name: Create ClusterRole for reading node information
-  ansible.builtin.shell: |
-    k0s kubectl apply -f - <<EOF
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRole
-    metadata:
-      name: node-reader
-    rules:
-    - apiGroups: [""]
-      resources: ["nodes"]
-      verbs: ["get"]
-    EOF
-  register: cr_result
-  failed_when: cr_result.rc != 0
-
-- name: Create ClusterRoleBinding for node-reader
-  ansible.builtin.shell: |
-    k0s kubectl apply -f - <<EOF
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
-    metadata:
-      name: node-reader-binding
-    subjects:
-    - kind: ServiceAccount
-      name: node-reader
-      namespace: simulation
-    roleRef:
-      kind: ClusterRole
-      name: node-reader
-      apiGroup: rbac.authorization.k8s.io
-    EOF
-  register: crb_result
-  failed_when: crb_result.rc != 0
+    k0s kubectl delete jobs --all -n simulation --ignore-not-found=true

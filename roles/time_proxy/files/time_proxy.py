@@ -14,11 +14,13 @@ ORG = "IRISA"
 BUCKET = "test"
 SIM_RATIO: int
 EXPERIMENT_ID: str
+START_TIME = 1672873200
+
 
 class SimClock:
     def __init__(self):
         self.real_start_time = time.time()
-        self.sim_start_timestamp = 1672527600
+        self.sim_start_timestamp = START_TIME
 
 
 clock = SimClock()
@@ -28,14 +30,14 @@ query_api = client.query_api()
 
 
 @app.post("/reset")
-def reset_clock(start_timestamp: int = 1672527600):
+def reset_clock(start_timestamp: int = START_TIME):
     """Resets the simulation clock to now."""
     # Clear all data in the bucket
     delete_api = client.delete_api()
     delete_api.delete(
         start=dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc),
         stop=dt.datetime.now(dt.timezone.utc),
-        predicate="",
+        predicate=f"experiment_id={EXPERIMENT_ID}",
         bucket=BUCKET,
         org=ORG,
     )
