@@ -12,7 +12,7 @@ import urllib.error
 
 BROKER = "131.254.19.109"
 TIME_PROXY_URL = "http://131.254.19.109:5000"
-PORT = 5672 
+PORT = 5672
 EXCHANGE = "nepal_scenario"
 QUEUE_NAME = sys.argv[1]
 ONE_MINUTE = int(sys.argv[2])
@@ -20,20 +20,22 @@ ONE_MINUTE = int(sys.argv[2])
 TOTAL_OUTDATED_MESSAGES = 0
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 def send_bogos_to_time_proxy(app_name: str, bogos: float) -> bool:
     """
     Send the number of bogos treated for a given app to time_proxy.
     Requires TIME_PROXY_URL env var (e.g., http://localhost:5000).
     """
-    params = urllib.parse.urlencode({
-        "value": float(bogos),
-        "device": app_name,
-    })
+    params = urllib.parse.urlencode(
+        {
+            "value": float(bogos),
+            "device": app_name,
+        }
+    )
     url = f"{TIME_PROXY_URL.rstrip('/')}/data/bogos_treated?{params}"
     req = urllib.request.Request(url, method="POST")
     try:
@@ -50,6 +52,7 @@ def send_bogos_to_time_proxy(app_name: str, bogos: float) -> bool:
         logger.error(f"time_proxy write failed: {e}")
         return False
 
+
 def run_sysbench(value):
     events = value * ONE_MINUTE
     if events == 0:
@@ -58,57 +61,68 @@ def run_sysbench(value):
     # # This is a dump fix for the CM4 taking a little bit more time to process 272 events.
     # if events == 272:
     #     events = 250
-    command = f"stress-ng --cpu 1 --cpu-ops {events}"
-    # command = f"sysbench cpu --cpu-max-prime=10000 --threads=1 --events={events} run" 
+    command = f"stress-ng --cpu 8 --cpu-ops {events}"
+    # command = f"sysbench cpu --cpu-max-prime=10000 --threads=1 --events={events} run"
     logger.info(f"Running command: {command}")
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     stdout, stderr = process.communicate()
     if process.returncode != 0:
         logger.error(f"Error running sysbench: {stderr.decode('utf-8')}")
     else:
-        logger.info(stdout.decode('utf-8'))
+        logger.info(stdout.decode("utf-8"))
+
 
 def log_delay(timestamp):
     channel.queue_declare(queue=f"{QUEUE_NAME}_delay", durable=True)
-    channel.queue_bind(exchange=EXCHANGE, queue=f"{QUEUE_NAME}_delay", routing_key=f"{QUEUE_NAME}_delay")
+    channel.queue_bind(
+        exchange=EXCHANGE,
+        queue=f"{QUEUE_NAME}_delay",
+        routing_key=f"{QUEUE_NAME}_delay",
+    )
     delay = time.time() - timestamp
     payload = json.dumps({"delay": delay}).encode()
     channel.basic_publish(
         exchange=EXCHANGE,
         routing_key=f"{QUEUE_NAME}_delay",
         body=payload,
-        properties=pika.BasicProperties(
-            delivery_mode=2  
-        )
+        properties=pika.BasicProperties(delivery_mode=2),
     )
+
 
 def log_delay_every_message(timestamp, message_timestamp):
     channel.queue_declare(queue=f"{QUEUE_NAME}_delay_every_meesage", durable=True)
-    channel.queue_bind(exchange=EXCHANGE, queue=f"{QUEUE_NAME}_delay_every_meesage", routing_key=f"{QUEUE_NAME}_delay_every_meesage")
+    channel.queue_bind(
+        exchange=EXCHANGE,
+        queue=f"{QUEUE_NAME}_delay_every_meesage",
+        routing_key=f"{QUEUE_NAME}_delay_every_meesage",
+    )
     delay = timestamp - message_timestamp
     payload = json.dumps({"delay": delay}).encode()
     channel.basic_publish(
         exchange=EXCHANGE,
         routing_key=f"{QUEUE_NAME}_delay_every_meesage",
         body=payload,
-        properties=pika.BasicProperties(
-            delivery_mode=2  
-        )
+        properties=pika.BasicProperties(delivery_mode=2),
     )
     logger.info(f"Delay logged: {delay} seconds")
+
 
 def treat_messages():
     def on_message(ch, method, properties, body):
         start_time = time.time()
-        start_time_str = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')
+        start_time_str = datetime.fromtimestamp(start_time).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
+        )
         logger.info(f"Starting on_message callback at {start_time_str}")
-        
+
         payload = body.decode()
         try:
             data = json.loads(payload)
             timenow = time.time()
             if data.get("events") == -1:
-                ch.basic_ack(delivery_tag=method.delivery_tag) 
+                ch.basic_ack(delivery_tag=method.delivery_tag)
                 logger.info("Finish message received. Stopping.")
                 ch.stop_consuming()
                 return
@@ -118,32 +132,40 @@ def treat_messages():
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError:
             logger.warning(f"Received invalid JSON: {payload}")
-        
+
         end_time = time.time()
-        end_time_str = datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')
+        end_time_str = datetime.fromtimestamp(end_time).strftime("%Y-%m-%d %H:%M:%S.%f")
         duration = end_time - start_time
-        logger.info(f"Finished on_message callback at {end_time_str}. Duration: {duration:.4f} seconds")
+        logger.info(
+            f"Finished on_message callback at {end_time_str}. Duration: {duration:.4f} seconds"
+        )
 
     channel.basic_qos(prefetch_count=1)
     channel.basic_consume(queue=QUEUE_NAME, on_message_callback=on_message)
     channel.start_consuming()
 
+
 def treat_finish_message():
     channel.queue_declare(queue="information", durable=True)
-    channel.queue_bind(exchange=EXCHANGE, queue="information", routing_key="information")
-    payload = json.dumps({"app": QUEUE_NAME, "total": TOTAL_OUTDATED_MESSAGES, "timestamp": time.time()}).encode()
+    channel.queue_bind(
+        exchange=EXCHANGE, queue="information", routing_key="information"
+    )
+    payload = json.dumps(
+        {"app": QUEUE_NAME, "total": TOTAL_OUTDATED_MESSAGES, "timestamp": time.time()}
+    ).encode()
     channel.basic_publish(
         exchange=EXCHANGE,
         routing_key="information",
         body=payload,
-        properties=pika.BasicProperties(
-            delivery_mode=2  
-        )
+        properties=pika.BasicProperties(delivery_mode=2),
     )
 
-if __name__ == "__main__": 
+
+if __name__ == "__main__":
     if len(sys.argv) != 3:
-        logger.error("Usage: python sysbench_from_csv.py <workload_number> <one_minute>")
+        logger.error(
+            "Usage: python sysbench_from_csv.py <workload_number> <one_minute>"
+        )
         sys.exit(1)
 
     credentials = pika.PlainCredentials("guest", "guest")
