@@ -52,6 +52,15 @@ async def solve_optimization(request: SolveRequest):
         
         logger.info(f"Setup complete: Apps={Apps}, total_weight={total_w}, App_Levels count={len(App_Levels)}")
 
+        if request.budget <= 0:
+            logger.info("Budget <= 0, returning baseline L1 allocations")
+            result = {f"A{i}L{j}": 0 for (i, j) in App_Levels}
+            for i in Apps:
+                if (i, 1) in App_Levels:
+                    result[f"A{i}L1"] = 1
+            logger.info("=" * 80)
+            return result
+
         # 2. Build Model
         logger.info("Building optimization model...")
         model = LpProblem("Service_Optimization", LpMaximize)

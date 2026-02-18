@@ -1,4 +1,21 @@
 ---
+# Freeze experiment timestamp so results_dir and experiment_id stay consistent
+- name: Set experiment timestamp
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Compute run timestamp on localhost
+      ansible.builtin.set_fact:
+        run_timestamp: "{{ lookup('pipe', 'date +%y-%m-%d-%H-%M') }}"
+      run_once: true
+      delegate_to: localhost
+      delegate_facts: true
+
+    - name: Set experiment variables for all hosts
+      ansible.builtin.set_fact:
+        experiment_id: "{{ hostvars['localhost'].run_timestamp }}"
+        results_dir: "{{ (results_dir | regex_replace('/[^/]+$','')) }}/{{ hostvars['localhost'].run_timestamp }}"
+
 #- name: Setup monitoring
 #  hosts: server
 #  gather_facts: true
@@ -20,19 +37,19 @@
 #   roles:
 #     - role: get_limit
 
-# - name: Setup lp_schedules problem solver
-#   hosts: server
-#   gather_facts: true
-#   become: true
-#   roles:
-#     - role: lp_schedules
+- name: Setup lp_schedules problem solver
+  hosts: server
+  gather_facts: true
+  become: true
+  roles:
+    - role: lp_schedules
 
-# - name: Setup lp_schedules_operator
-#   hosts: server
-#   gather_facts: true
-#   become: true
-#   roles:
-#     - role: lp_schedules_operator
+- name: Setup lp_schedules_operator
+  hosts: server
+  gather_facts: true
+  become: true
+  roles:
+    - role: lp_schedules_operator
 
 # - name: Prepare simulation prerequisites
 #   hosts: turing_pi_cluster
@@ -79,12 +96,12 @@
       ansible.builtin.shell: |
         k0s kubectl delete jobs --all -n simulation --ignore-not-found=true
 
-- name: Run application preparation
-  hosts: turing_pi_cluster
-  gather_facts: true
-  become: true
-  roles:
-    - role: deploy_applications_prereq
+# - name: Run application preparation
+#   hosts: turing_pi_cluster
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: deploy_applications_prereq
 
 - name: Run time_proxy
   hosts: localhost
@@ -171,5 +188,3 @@
     # observatory: "event_driven_observatory"
     # observatory: "long_term_observatory"
     observatory: "nepal_scenario"
-
-# # *********** Get the energy budget and update the CRD *********** #

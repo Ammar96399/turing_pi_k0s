@@ -9,6 +9,7 @@ CLUSTER_IP_LINEAR_PROGRAM = "10.106.47.172"
 SOLVER_URL = f"http://{CLUSTER_IP_LINEAR_PROGRAM}:49090/solve"
 MAX_RETRIES = 5
 RETRY_DELAY_SECONDS = 3
+ONE_MINUTE = 10
 
 
 @kopf.on.create("graceful-degradation.io", "v0", "lpschedules")
@@ -115,7 +116,7 @@ def ensure_job_running(api, job_name, namespace, logger):
                         {
                             "name": "application-simulator",
                             "image": "application-simulator:local",
-                            "args": [job_name, "60"],
+                            "args": [job_name, str(ONE_MINUTE)],
                             "imagePullPolicy": "Never",
                             "env": [
                                 {

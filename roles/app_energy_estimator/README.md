@@ -25,3 +25,11 @@ The energy consumed by the idle plateform cannot be neglacted and should be adde
 
 In Table 1, we can see that the energy consumption of the idle nodes can be quite high. This is why I think it should be included in the energy consumption calculations. 
 One way of doing that would be to divide the total energy consumption of 236 Wh per day, assuming that all the nodes are constantly running, between all the applications. So if we have a total of 23 applications the energy each one would get would be: 236/23 = 10.3 Wh per day. 
+
+### Update of 16/02/2026
+
+The way of distributing the static energy consumption that I used above is not good for the following reasons: 
+- It assumes that we have 23 applications running constantly which is never the case
+- This causes an underestimation of the static power consumption per application leading to a surplus in the energy consumption.
+
+After discussing this issue with Guillaume and Laurent we came up with a different strategy. We will substract the static energy consumption for the energy budget before passing it to the solver. 

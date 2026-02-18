@@ -53,6 +53,30 @@ def send_bogos_to_time_proxy(app_name: str, bogos: float) -> bool:
         return False
 
 
+def send_delay_to_time_proxy(metric_name: str, app_name: str, delay: float) -> bool:
+    params = urllib.parse.urlencode(
+        {
+            "value": float(delay),
+            "device": app_name,
+        }
+    )
+    url = f"{TIME_PROXY_URL.rstrip('/')}/data/{metric_name}?{params}"
+    req = urllib.request.Request(url, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            if 200 <= resp.status < 300:
+                return True
+            logger.error(f"time_proxy write failed: HTTP {resp.status}")
+            return False
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        logger.error(f"time_proxy write failed: HTTP {e.code} {body}")
+        return False
+    except urllib.error.URLError as e:
+        logger.error(f"time_proxy write failed: {e}")
+        return False
+
+
 def run_sysbench(value):
     events = value * ONE_MINUTE
     if events == 0:
@@ -74,38 +98,9 @@ def run_sysbench(value):
         logger.info(stdout.decode("utf-8"))
 
 
-def log_delay(timestamp):
-    channel.queue_declare(queue=f"{QUEUE_NAME}_delay", durable=True)
-    channel.queue_bind(
-        exchange=EXCHANGE,
-        queue=f"{QUEUE_NAME}_delay",
-        routing_key=f"{QUEUE_NAME}_delay",
-    )
-    delay = time.time() - timestamp
-    payload = json.dumps({"delay": delay}).encode()
-    channel.basic_publish(
-        exchange=EXCHANGE,
-        routing_key=f"{QUEUE_NAME}_delay",
-        body=payload,
-        properties=pika.BasicProperties(delivery_mode=2),
-    )
-
-
 def log_delay_every_message(timestamp, message_timestamp):
-    channel.queue_declare(queue=f"{QUEUE_NAME}_delay_every_meesage", durable=True)
-    channel.queue_bind(
-        exchange=EXCHANGE,
-        queue=f"{QUEUE_NAME}_delay_every_meesage",
-        routing_key=f"{QUEUE_NAME}_delay_every_meesage",
-    )
     delay = timestamp - message_timestamp
-    payload = json.dumps({"delay": delay}).encode()
-    channel.basic_publish(
-        exchange=EXCHANGE,
-        routing_key=f"{QUEUE_NAME}_delay_every_meesage",
-        body=payload,
-        properties=pika.BasicProperties(delivery_mode=2),
-    )
+    send_delay_to_time_proxy("delay_every_message", QUEUE_NAME, delay)
     logger.info(f"Delay logged: {delay} seconds")
 
 

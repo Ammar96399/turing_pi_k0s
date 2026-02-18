@@ -178,6 +178,74 @@ def update_battery_soc(soc_wh, gen_wh, consumed_wh):
     return soc_wh - draw
 
 
+def calculate_daily_energy_breakdown(
+    daily_gen_wh: float, soc_wh: float, static_overhead_wh: float = 131.0
+) -> dict:
+    """
+    Calculate daily energy breakdown based on battery state.
+
+    Returns a dictionary with:
+    - total_wh: gross daily generation
+    - static_wh: static overhead
+    - net_wh: generation after static overhead
+    - apps_wh: energy allocated to apps
+    - battery_wh: energy allocated to battery recharge
+    """
+    total_wh = daily_gen_wh
+    static_wh = static_overhead_wh
+    net_daily_gen = total_wh - static_wh
+
+    if net_daily_gen <= 0:
+        return {
+            "total_wh": total_wh,
+            "static_wh": static_wh,
+            "net_wh": 0.0,
+            "apps_wh": 0.0,
+            "battery_wh": 0.0,
+        }
+
+    soc_percentage = soc_wh / BATTERY_CAPACITY_WH
+
+    if soc_percentage < 0.25:
+        app_allocation_pct = 0.25
+    elif soc_percentage < 0.5:
+        app_allocation_pct = 0.5
+    elif soc_percentage < 0.75:
+        app_allocation_pct = 0.75
+    else:
+        app_allocation_pct = 1.0
+
+    apps_wh = net_daily_gen * app_allocation_pct
+    battery_wh = net_daily_gen - apps_wh
+
+    logger.debug(
+        "Energy allocation: SOC=%.1f%% -> %.0f%% to apps, %.0f%% to recharge; "
+        "net_gen=%.2f Wh, app_share=%.2f Wh",
+        soc_percentage * 100,
+        app_allocation_pct * 100,
+        (1 - app_allocation_pct) * 100,
+        net_daily_gen,
+        apps_wh,
+    )
+
+    return {
+        "total_wh": total_wh,
+        "static_wh": static_wh,
+        "net_wh": net_daily_gen,
+        "apps_wh": apps_wh,
+        "battery_wh": battery_wh,
+    }
+
+
+def calculate_available_energy_for_apps(
+    daily_gen_wh: float, soc_wh: float, static_overhead_wh: float = 131.0
+) -> float:
+    """Backwards-compatible wrapper to get app allocation only."""
+    return calculate_daily_energy_breakdown(daily_gen_wh, soc_wh, static_overhead_wh)[
+        "apps_wh"
+    ]
+
+
 def run_simulation(header, rows, start_date, end_date, wp, hourly_load_w):
     time_idx = header.index("time")
     ghi_idx = header.index("G(i)")
@@ -319,12 +387,35 @@ def main():
 
             if last_day != sim_dt.date():
                 last_day = sim_dt.date()
+
                 if last_day in daily_gen_wh:
+                    breakdown = calculate_daily_energy_breakdown(
+                        daily_gen_wh[last_day], soc_wh
+                    )
+                    daily_availble_energy = breakdown["apps_wh"]
                     logger.info("Sending daily energy for %s", last_day.isoformat())
                     send_to_time_proxy(
                         args.time_proxy_url,
                         "solar_energy_daily_wh",
-                        daily_gen_wh[last_day],
+                        daily_availble_energy,
+                        args.device,
+                    )
+                    send_to_time_proxy(
+                        args.time_proxy_url,
+                        "solar_energy_daily_total_wh",
+                        breakdown["total_wh"],
+                        args.device,
+                    )
+                    send_to_time_proxy(
+                        args.time_proxy_url,
+                        "solar_energy_daily_static_wh",
+                        breakdown["static_wh"],
+                        args.device,
+                    )
+                    send_to_time_proxy(
+                        args.time_proxy_url,
+                        "solar_energy_daily_battery_wh",
+                        breakdown["battery_wh"],
                         args.device,
                     )
 

@@ -14,7 +14,8 @@ ORG = "IRISA"
 BUCKET = "test"
 SIM_RATIO: int
 EXPERIMENT_ID: str
-START_TIME = 1672873200
+# START_TIME = 1672873200
+START_TIME = 1656626400
 
 
 class SimClock:
@@ -29,21 +30,45 @@ write_api = client.write_api(write_options=SYNCHRONOUS)
 query_api = client.query_api()
 
 
+def experiment_id_exists(experiment_id: str) -> bool:
+    if not experiment_id:
+        return False
+    flux = f"""
+from(bucket: \"{BUCKET}\")
+  |> range(start: 1970-01-01T00:00:00Z)
+  |> filter(fn: (r) => r.experiment_id == \"{experiment_id}\")
+  |> limit(n:1)
+"""
+    tables = query_api.query(flux)
+    for table in tables:
+        if table.records:
+            return True
+    return False
+
+
 @app.post("/reset")
 def reset_clock(start_timestamp: int = START_TIME):
     """Resets the simulation clock to now."""
-    # Clear all data in the bucket
-    delete_api = client.delete_api()
-    delete_api.delete(
-        start=dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc),
-        stop=dt.datetime.now(dt.timezone.utc),
-        predicate=f"experiment_id={EXPERIMENT_ID}",
-        bucket=BUCKET,
-        org=ORG,
-    )
+    # Clear all data in the bucket for this experiment if it exists
+    deleted = False
+    if experiment_id_exists(EXPERIMENT_ID):
+        delete_api = client.delete_api()
+        predicate = f'experiment_id="{EXPERIMENT_ID}"'
+        delete_api.delete(
+            start=dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc),
+            stop=dt.datetime.now(dt.timezone.utc),
+            predicate=predicate,
+            bucket=BUCKET,
+            org=ORG,
+        )
+        deleted = True
     clock.real_start_time = time.time()
     clock.sim_start_timestamp = start_timestamp
-    return {"status": "Simulation Reset", "sim_start": start_timestamp}
+    return {
+        "status": "Simulation Reset",
+        "sim_start": start_timestamp,
+        "deleted": deleted,
+    }
 
 
 @app.get("/time")

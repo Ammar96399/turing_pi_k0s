@@ -80,7 +80,7 @@ def fetch_app_energy(app_energy_url: str, cores: float) -> float:
     data = response.json()
     if "energy" not in data:
         raise ValueError(f"Missing energy in app energy response: {data}")
-    energy_value = int(data["energy"])
+    energy_value = float(data["energy"])
     logger.info("app_energy cores=%s energy=%s", cores, energy_value)
     return energy_value
 

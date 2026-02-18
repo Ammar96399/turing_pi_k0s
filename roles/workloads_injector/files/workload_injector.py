@@ -120,9 +120,8 @@ def process_workload_folders():
     results = read_events_from_csv_files(BASE_PATH)
     first_element = next(iter(results.items()))
     max_minutes = len(first_element[1])
-    # max_minutes = 60
     base_path = Path(BASE_PATH)
-    for minute in range(6060, max_minutes + 1):
+    for minute in range(0, max_minutes + 1):
         if minute == max_minutes:
             logger.info("Sending a finish message...")
             for folder_name, event_list in results.items():
