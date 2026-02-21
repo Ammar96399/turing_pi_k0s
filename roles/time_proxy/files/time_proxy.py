@@ -15,7 +15,7 @@ BUCKET = "test"
 SIM_RATIO: int
 EXPERIMENT_ID: str
 # START_TIME = 1672873200
-START_TIME = 1656626400
+START_TIME = 1672531200
 
 
 class SimClock:
@@ -76,7 +76,12 @@ def get_current_simulation_time():
     """Gets the current simulation time"""
     elapsed_real = time.time() - clock.real_start_time
     sim_now = clock.sim_start_timestamp + (elapsed_real * SIM_RATIO)
-    return {"time": sim_now}
+    return {
+        "time": sim_now,
+        "formatted_time": dt.datetime.fromtimestamp(
+            sim_now, dt.timezone.utc
+        ).isoformat(),
+    }
 
 
 @app.post("/data/{measurement}")

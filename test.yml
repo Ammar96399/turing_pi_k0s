@@ -37,19 +37,19 @@
 #   roles:
 #     - role: get_limit
 
-- name: Setup lp_schedules problem solver
-  hosts: server
-  gather_facts: true
-  become: true
-  roles:
-    - role: lp_schedules
+# - name: Setup lp_schedules problem solver
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: lp_schedules
 
-- name: Setup lp_schedules_operator
-  hosts: server
-  gather_facts: true
-  become: true
-  roles:
-    - role: lp_schedules_operator
+# - name: Setup lp_schedules_operator
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: lp_schedules_operator
 
 # - name: Prepare simulation prerequisites
 #   hosts: turing_pi_cluster
@@ -166,8 +166,8 @@
     - role: node_control
   vars:
     window_size: 30
-    min_threshold: 40
-    max_threshold: 90
+    min_threshold: 30
+    max_threshold: 80
 
 - name: Prepare injecting workloads
   hosts: localhost

@@ -121,6 +121,11 @@ def process_workload_folders():
     first_element = next(iter(results.items()))
     max_minutes = len(first_element[1])
     base_path = Path(BASE_PATH)
+    logger.info(
+        f"Preparing to send {len(results.items())} applications with {max_minutes} elements each."
+    )
+    for folder_name, event_list in results.items():
+        logger.info(f"{folder_name} has {len(event_list)} items")
     for minute in range(0, max_minutes + 1):
         if minute == max_minutes:
             logger.info("Sending a finish message...")

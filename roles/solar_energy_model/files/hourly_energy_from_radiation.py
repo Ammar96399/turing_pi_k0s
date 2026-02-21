@@ -27,8 +27,8 @@ DISCHARGE_EFFICIENCY: float
 LOCAL_TZ: dt.tzinfo
 
 
-def parse_date(s: str) -> dt.date:
-    return dt.datetime.strptime(s, "%Y-%m-%d").date()
+def first_day_of_each_month(year: int):
+    return [dt.date(year, month, 1) for month in range(1, 13)]
 
 
 def fetch_csv(lat, lon, start, end):
@@ -127,7 +127,7 @@ def fetch_from_time_proxy(
         return None
 
 
-def build_hourly_generation_map(header, rows, start_date, end_date, wp):
+def build_hourly_generation_map(header, rows, selected_dates, wp):
     time_idx = header.index("time")
     ghi_idx = header.index("G(i)")
     hourly_gen_wh = {}
@@ -137,7 +137,7 @@ def build_hourly_generation_map(header, rows, start_date, end_date, wp):
             continue
         t = dt.datetime.strptime(r[time_idx], "%Y%m%d:%H%M").replace(tzinfo=LOCAL_TZ)
         t_hour = t.replace(minute=0, second=0, microsecond=0)
-        if not (start_date <= t.date() <= end_date):
+        if t.date() not in selected_dates:
             continue
         irradiance_wm2 = float(r[ghi_idx])
         p_gen = (irradiance_wm2 / STC_IRRADIANCE) * wp * (1 - SYSTEM_LOSSES)
@@ -304,8 +304,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--lat", type=float, required=True)
     p.add_argument("--lon", type=float, required=True)
-    p.add_argument("--start", required=True)
-    p.add_argument("--end", required=True)
+    p.add_argument("--year", type=int, required=True)
     p.add_argument("--stc-irradiance", type=float, required=True)
     p.add_argument("--system-losses", type=float, required=True)
     p.add_argument("--battery-capacity-wh", type=float, required=True)
@@ -314,7 +313,7 @@ def main():
     p.add_argument("--charge-efficiency", type=float, required=True)
     p.add_argument("--discharge-efficiency", type=float, required=True)
     p.add_argument("--tz-offset-hours", type=float, required=True)
-    p.add_argument("--wp", type=float, default=150.0, help="Solar Peak Power in Watts")
+    p.add_argument("--wp", type=float, default=100.0, help="Solar Peak Power in Watts")
     p.add_argument(
         "--device", default="solar_model", help="Device tag to send with data"
     )
@@ -351,10 +350,16 @@ def main():
     DISCHARGE_EFFICIENCY = args.discharge_efficiency
     LOCAL_TZ = dt.timezone(dt.timedelta(hours=args.tz_offset_hours))
 
-    start, end = parse_date(args.start), parse_date(args.end)
+    selected_dates = first_day_of_each_month(args.year)
+    selected_dates_set = set(selected_dates)
+    selected_dates_by_day_index = {
+        day_index: selected_dates[day_index] for day_index in range(12)
+    }
+    fetch_start = dt.date(args.year, 1, 1)
+    fetch_end = dt.date(args.year, 12, 31)
 
     logger.info("Fetching data from PVGIS...")
-    csv_text = fetch_csv(args.lat, args.lon, start, end)
+    csv_text = fetch_csv(args.lat, args.lon, fetch_start, fetch_end)
     header, rows = parse_pvgis_csv(csv_text)
     if not header or not rows:
         raise RuntimeError(
@@ -362,14 +367,15 @@ def main():
         )
     logger.info("PVGIS data loaded: %d rows", len(rows))
     hourly_gen_wh, daily_gen_wh = build_hourly_generation_map(
-        header, rows, start, end, args.wp
+        header, rows, selected_dates_set, args.wp
     )
     logger.info(
-        "Generated hourly and daily maps: hourly=%d daily=%d",
+        "Generated hourly and daily maps for first day of each month: hourly=%d daily=%d",
         len(hourly_gen_wh),
         len(daily_gen_wh),
     )
 
+    simulation_start_date = None
     last_day = None
     last_hour = None
     soc_wh = INITIAL_SOC_WH
@@ -381,19 +387,33 @@ def main():
             sim_dt = dt.datetime.fromtimestamp(sim_ts, LOCAL_TZ)
             logger.debug("Sim time: %s", sim_dt.isoformat())
 
-            if sim_dt.date() > end:
-                logger.info("Simulation range finished.")
+            if simulation_start_date is None:
+                simulation_start_date = sim_dt.date()
+
+            day_index = (sim_dt.date() - simulation_start_date).days
+            if day_index < 0:
+                time.sleep(1)
+                continue
+
+            if day_index >= 12:
+                logger.info("Simulation range finished after 12 representative days.")
                 break
+
+            scenario_date = selected_dates_by_day_index[day_index]
 
             if last_day != sim_dt.date():
                 last_day = sim_dt.date()
 
-                if last_day in daily_gen_wh:
+                if scenario_date in daily_gen_wh:
                     breakdown = calculate_daily_energy_breakdown(
-                        daily_gen_wh[last_day], soc_wh
+                        daily_gen_wh[scenario_date], soc_wh
                     )
                     daily_availble_energy = breakdown["apps_wh"]
-                    logger.info("Sending daily energy for %s", last_day.isoformat())
+                    logger.info(
+                        "Sending daily energy for simulated day %s using scenario %s",
+                        last_day.isoformat(),
+                        scenario_date.isoformat(),
+                    )
                     send_to_time_proxy(
                         args.time_proxy_url,
                         "solar_energy_daily_wh",
@@ -422,12 +442,51 @@ def main():
             current_hour = sim_dt.replace(minute=0, second=0, microsecond=0)
             if last_hour != current_hour:
                 logger.info("New hour: %s", current_hour.isoformat())
-                last_hour = current_hour
-                gen_wh = hourly_gen_wh.get(current_hour, 0.0)
+                scenario_hour = dt.datetime.combine(
+                    scenario_date,
+                    dt.time(hour=current_hour.hour),
+                    tzinfo=LOCAL_TZ,
+                )
+                gen_wh = hourly_gen_wh.get(scenario_hour, 0.0)
                 logger.info("Hourly generation: %.2f Wh", gen_wh)
                 send_to_time_proxy(
                     args.time_proxy_url, "solar_energy_hourly_wh", gen_wh, args.device
                 )
+                # This if is to not start consuming energy before the experiment starts
+                if last_hour != None:
+                    consumed_wh = query_consumed_wh(
+                        args.time_proxy_url,
+                        args.wattmeter_device,
+                        args.experiment_id,
+                        args.consumption_window_seconds,
+                    )
+                    logger.info("Consumed energy: %.2f Wh", consumed_wh)
+                else: 
+                    consumed_wh = 0
+                    logger.info("Consumed energy: %.2f Wh", consumed_wh)
+                soc_wh = update_battery_soc(soc_wh, gen_wh, consumed_wh)
+                logger.info("Battery SoC: %.2f Wh", soc_wh)
+                send_to_time_proxy(
+                    args.time_proxy_url, "battery_soc_wh", soc_wh, args.device
+                )
+                last_hour = current_hour
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Solar model stopped by user.")
+    finally:
+        logger.info("Running battery update block for one more hour before exit.")
+        extension_end_time = time.time() + 3600
+        extension_last_hour = last_hour
+
+        while time.time() < extension_end_time:
+            sim_ts = fetch_sim_time(args.time_proxy_url)
+            sim_dt = dt.datetime.fromtimestamp(sim_ts, LOCAL_TZ)
+
+            current_hour = sim_dt.replace(minute=0, second=0, microsecond=0)
+            if extension_last_hour != current_hour:
+                extension_last_hour = current_hour
+
+                gen_wh = 0.0
 
                 consumed_wh = query_consumed_wh(
                     args.time_proxy_url,
@@ -444,8 +503,6 @@ def main():
                 )
 
             time.sleep(1)
-    finally:
-        pass
 
 
 if __name__ == "__main__":
