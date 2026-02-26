@@ -61,7 +61,7 @@
   vars:
     # observatory: "event_driven_observatory"
     # observatory: "long_term_observatory"
-    observatory: "nepal_scenario"
+    observatory: "gauge_scenario"
     
 # - name: Start node control
 #   hosts: server

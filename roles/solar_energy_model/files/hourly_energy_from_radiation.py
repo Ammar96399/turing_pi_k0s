@@ -28,7 +28,7 @@ LOCAL_TZ: dt.tzinfo
 
 
 def first_day_of_each_month(year: int):
-    return [dt.date(year, month, 1) for month in range(1, 13)]
+    return [dt.date(year, month, 2) for month in range(1, 13)]
 
 
 def fetch_csv(lat, lon, start, end):
@@ -58,6 +58,14 @@ def parse_pvgis_csv(csv_text: str):
                 break
             rows.append(line.split(","))
     return header, rows
+
+
+def print_solar_data_csv(hourly_gen_wh, daily_gen_wh):
+    print("time_iso,solar_energy_hourly_wh,solar_energy_daily_total_wh")
+    for hour in sorted(hourly_gen_wh.keys()):
+        hourly_value = hourly_gen_wh.get(hour, 0.0)
+        daily_value = daily_gen_wh.get(hour.date(), 0.0)
+        print(f"{hour.isoformat()},{hourly_value:.6f},{daily_value:.6f}")
 
 
 def fetch_sim_time(time_proxy_url: str) -> float:
@@ -313,7 +321,7 @@ def main():
     p.add_argument("--charge-efficiency", type=float, required=True)
     p.add_argument("--discharge-efficiency", type=float, required=True)
     p.add_argument("--tz-offset-hours", type=float, required=True)
-    p.add_argument("--wp", type=float, default=100.0, help="Solar Peak Power in Watts")
+    p.add_argument("--wp", type=float, default=50.0, help="Solar Peak Power in Watts")
     p.add_argument(
         "--device", default="solar_model", help="Device tag to send with data"
     )
@@ -374,6 +382,8 @@ def main():
         len(hourly_gen_wh),
         len(daily_gen_wh),
     )
+    logger.info("Printing generated solar data as CSV before sending to time_proxy.")
+    print_solar_data_csv(hourly_gen_wh, daily_gen_wh)
 
     simulation_start_date = None
     last_day = None

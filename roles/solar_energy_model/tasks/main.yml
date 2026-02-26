@@ -7,7 +7,7 @@
   become: true
 
 - name: Run hourly solar energy model on localhost in background
-  ansible.builtin.shell: bash -c '/home/{{ local_user }}/miniconda3/bin/python3 {{ role_path }}/files/hourly_energy_from_radiation.py --lat {{ solar_lat }} --lon {{ solar_lon }} --year {{ solar_year }} --stc-irradiance {{ stc_irradiance }} --system-losses {{ system_losses }} --battery-capacity-wh {{ battery_capacity_wh }} --initial-soc-wh {{ initial_soc_wh }} --max-charge-w {{ max_charge_w }} --charge-efficiency {{ charge_efficiency }} --discharge-efficiency {{ discharge_efficiency }} --tz-offset-hours {{ tz_offset_hours }} --experiment-id {{ experiment_id }} > {{ results_dir }}/solar_energy_model.log 2>&1 & echo $! > {{ results_dir }}/solar_energy_model.pid'
+  ansible.builtin.shell: bash -c '/home/{{ local_user }}/miniconda3/bin/python3 {{ role_path }}/files/hourly_energy_from_radiation_date_range.py --lat {{ solar_lat }} --lon {{ solar_lon }} --start {{ solar_start | default(solar_year ~ "-01-01") }} --end {{ solar_end | default(solar_year ~ "-12-31") }} --stc-irradiance {{ stc_irradiance }} --system-losses {{ system_losses }} --battery-capacity-wh {{ battery_capacity_wh }} --initial-soc-wh {{ initial_soc_wh }} --max-charge-w {{ max_charge_w }} --charge-efficiency {{ charge_efficiency }} --discharge-efficiency {{ discharge_efficiency }} --tz-offset-hours {{ tz_offset_hours }} --wp {{ wp | default(100.0) }} --experiment-id {{ experiment_id }} > {{ results_dir }}/solar_energy_model.log 2>&1 & echo $! > {{ results_dir }}/solar_energy_model.pid'
   become: true
   args:
     chdir: "{{ role_path }}"
