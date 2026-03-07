@@ -16,29 +16,21 @@ import json
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
 import requests
 import yaml
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
-DEFAULT_INPUT = (
-    Path(__file__).resolve().parent
-    / "lpschedule_template.yml"
-)
+DEFAULT_INPUT = Path(__file__).resolve().parent / "lpschedule_template.yml"
 DEFAULT_OUTPUT = Path(__file__).resolve().parent / "test.energy.yml"
 
-DEFAULT_GET_LIMIT_URL = (
-    "http://10.96.112.206:49091"
-)
-DEFAULT_APP_ENERGY_URL = (
-    "http://10.109.123.8:49094"
-)
-DEFAULT_SOLAR_ENERGY_URL = (
-    "http://10.109.255.196:49095"
-)
+DEFAULT_GET_LIMIT_URL = "http://10.96.112.206:49091"
+DEFAULT_APP_ENERGY_URL = "http://10.109.123.8:49094"
+DEFAULT_SOLAR_ENERGY_URL = "http://10.109.255.196:49095"
 DEFAULT_NAMESPACE = "lp-schedules-operator"
 DEFAULT_TIME_PROXY_URL = "http://131.254.19.109:5000"
-LOCAL_TZ = dt.timezone(dt.timedelta(hours=1))
+LOCAL_TZ = dt.timezone.utc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,13 +97,17 @@ def fetch_time_proxy_measurement(
     try:
         with urllib.request.urlopen(url) as r:
             payload = json.loads(r.read().decode("utf-8"))
-            logger.info("time_proxy response measurement=%s payload=%s", measurement, payload)
+            logger.info(
+                "time_proxy response measurement=%s payload=%s", measurement, payload
+            )
             return payload
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Failed to reach time_proxy: {exc}") from exc
 
 
-def fetch_daily_solar_budget(time_proxy_url: str, solar_device: str, experiment_id: str | None) -> float:
+def fetch_daily_solar_e_sol_wh(
+    time_proxy_url: str, solar_device: str, experiment_id: str | None
+) -> float:
     while True:
         sim_dt = fetch_sim_datetime(time_proxy_url)
         data = fetch_time_proxy_measurement(
@@ -124,15 +120,65 @@ def fetch_daily_solar_budget(time_proxy_url: str, solar_device: str, experiment_
         value = data.get("value")
         ts = data.get("time")
         if value is None or ts is None:
-            logger.debug("solar budget missing value/time value=%s time=%s", value, ts)
+            logger.debug(
+                "solar e_sol_wh missing value/time value=%s time=%s", value, ts
+            )
             time.sleep(1)
             continue
 
-        ts_dt = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(LOCAL_TZ)
+        ts_dt = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(
+            LOCAL_TZ
+        )
         if ts_dt.date() == sim_dt.date():
-            logger.info("solar budget accepted date=%s value=%s", ts_dt.date(), value)
+            logger.info("solar e_sol_wh accepted date=%s value=%s", ts_dt.date(), value)
             return float(value)
         time.sleep(1)
+
+
+def fetch_latest_battery_soc_wh(
+    time_proxy_url: str, solar_device: str, experiment_id: str | None
+) -> float:
+    while True:
+        data = fetch_time_proxy_measurement(
+            time_proxy_url,
+            "battery_soc_wh",
+            device=solar_device,
+            experiment_id=experiment_id,
+            window_seconds=86400,
+        )
+        value = data.get("value")
+        ts = data.get("time")
+        if value is None or ts is None:
+            logger.debug(
+                "battery_soc_wh missing value/time value=%s time=%s", value, ts
+            )
+            time.sleep(1)
+            continue
+
+        logger.info("battery_soc_wh accepted time=%s value=%s", ts, value)
+        return float(value)
+
+
+def fetch_daily_gamma(
+    time_proxy_url: str, solar_device: str, experiment_id: str | None
+) -> float:
+    while True:
+        data = fetch_time_proxy_measurement(
+            time_proxy_url,
+            "gamma",
+            device=solar_device,
+            experiment_id=experiment_id,
+            window_seconds=86400,
+        )
+        value = data.get("value")
+        ts = data.get("time")
+        if value is None or ts is None:
+            logger.debug("gamma missing value/time value=%s time=%s", value, ts)
+            time.sleep(1)
+            continue
+
+        logger.info("gamma accepted time=%s value=%s", ts, value)
+        return float(value)
 
 
 def update_crd(
@@ -145,9 +191,22 @@ def update_crd(
 ) -> Dict[str, Any]:
     spec = crd.get("spec", {})
 
-    # Update budget from solar energy model
-    spec["budget"] = int(fetch_daily_solar_budget(time_proxy_url, solar_device, experiment_id))
-    logger.info("budget updated value=%s", spec["budget"])
+    # Update fields from time proxy
+    spec["e_sol_wh"] = float(
+        fetch_daily_solar_e_sol_wh(time_proxy_url, solar_device, experiment_id)
+    )
+    spec["soc_init_wh"] = float(
+        fetch_latest_battery_soc_wh(time_proxy_url, solar_device, experiment_id)
+    )
+    spec["gamma"] = float(
+        fetch_daily_gamma(time_proxy_url, solar_device, experiment_id)
+    )
+    logger.info(
+        "updated fields e_sol_wh=%s soc_init_wh=%s gamma=%s",
+        spec["e_sol_wh"],
+        spec["soc_init_wh"],
+        spec["gamma"],
+    )
     # Update level costs using get-limit -> app-energy
     apps = spec.get("applications", {})
     limit_cache: Dict[str, float] = {}
@@ -233,7 +292,9 @@ def apply_crd(crd: Dict[str, Any]) -> None:
                 name=name,
                 body=crd,
             )
-            logger.info("patched crd kind=%s name=%s namespace=%s", kind, name, namespace)
+            logger.info(
+                "patched crd kind=%s name=%s namespace=%s", kind, name, namespace
+            )
         else:
             raise
 
@@ -251,8 +312,7 @@ def fetch_sim_datetime(time_proxy_url: str) -> dt.datetime:
     if isinstance(value, (int, float)):
         return dt.datetime.fromtimestamp(float(value), LOCAL_TZ)
     if isinstance(value, str):
-        iso_value = value.replace("Z", "+00:00")
-        sim_dt = dt.datetime.fromisoformat(iso_value)
+        sim_dt = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
         if sim_dt.tzinfo is None:
             sim_dt = sim_dt.replace(tzinfo=LOCAL_TZ)
         return sim_dt.astimezone(LOCAL_TZ)
@@ -332,18 +392,22 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    last_day = None
+    last_hour_slot = None
     solar_device = "solar_model"
 
     logger.info("fetching latest solar budget before scheduling")
     args.solar_device = solar_device
     generate_and_apply(args)
 
-    logger.info("waiting for start of new day from time_proxy")
+    sim_dt = fetch_sim_datetime(args.time_proxy_url)
+    last_hour_slot = sim_dt.replace(minute=0, second=0, microsecond=0)
+
+    logger.info("waiting for start of each new hour from time_proxy")
     while True:
         sim_dt = fetch_sim_datetime(args.time_proxy_url)
-        if last_day != sim_dt.date() and sim_dt.hour == 0 and sim_dt.minute == 0:
-            last_day = sim_dt.date()
+        current_hour_slot = sim_dt.replace(minute=0, second=0, microsecond=0)
+        if current_hour_slot != last_hour_slot:
+            last_hour_slot = current_hour_slot
             generate_and_apply(args)
         time.sleep(1)
 

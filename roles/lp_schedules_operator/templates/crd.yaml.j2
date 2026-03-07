@@ -17,8 +17,14 @@ spec:
               type: object
               x-kubernetes-preserve-unknown-fields: true
               properties:
-                budget:
-                  type: integer
+                e_sol_wh:
+                  type: number
+                soc_init_wh:
+                  type: number
+                gamma:
+                  type: number
+                objective_type:
+                  type: string
                 applications:
                   type: object
                   additionalProperties:
@@ -29,6 +35,8 @@ spec:
                         type: integer
                       weight:
                         type: number
+                      critical:
+                        type: integer
                       levels:
                         type: array
                         items:

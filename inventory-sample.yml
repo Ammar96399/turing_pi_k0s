@@ -1,4 +1,30 @@
 ---
+all:
+  vars:
+    one_minute: 10
+    scrape_interval: 5
+    playbook_dir: "{{ lookup('env', 'PWD') }}"
+    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/degradation/nepal_scenario/{{ now(utc=True).strftime('%y-%m-%d-%H-%M') }}"
+    local_user: akazem
+    workload: longterm
+    experiment_id: "{{ now(utc=True).strftime('%y-%m-%d-%H-%M') }}"
+    solar_lat: 45.036067
+    solar_lon: 6.400415
+    solar_year: 2023
+    solar_start: "2019-09-20"
+    solar_end: "2019-09-29"
+    wp: 100.0
+    stc_irradiance: 1000.0
+    system_losses: 0.14
+    max_charge_w: 800.0
+    charge_efficiency: 0.95
+    discharge_efficiency: 0.94
+    battery_capacity_wh: 500.0
+    initial_soc_wh: 125.0
+    soc_crit_wh: 100.0
+    soc_min_wh: 0.0
+    static_energy_wh: 124.0
+    
 turing_pi_cluster:
   children:
     server:
@@ -14,55 +40,15 @@ turing_pi_cluster:
     ansible_user: akazem
     k3s_version: v1.32.2+k3s1
     api_endpoint: "{{ hostvars[groups['server'][0]]['ansible_host'] | default(groups['server'][0]) }}"
-    one_minute: 10
-    scrape_interval: 5
-    playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/degradation/nepal_scenario/{{ now(utc=True).strftime('%y-%m-%d-%H-%M') }}"
-    local_user: akazem
-    workload: longterm
     helm_version: "v3.17.0"
     helm_binary_path: "/usr/local/bin/helm"
     k3s_kubeconfig: "/home/akazem/k0s-kubeconfig.yml"
     monitoring_namespace: "monitoring"
-    experiment_id: "{{ now(utc=True).strftime('%y-%m-%d-%H-%M') }}"
-    solar_lat: 28.635740
-    solar_lon: 83.612029
-    solar_year: 2023
-    solar_start: "2019-09-20"
-    solar_end: "2019-09-29"
-    wp: 75.0
-    stc_irradiance: 1000.0
-    system_losses: 0.14
-    battery_capacity_wh: 500.0
-    initial_soc_wh: 250.0
-    max_charge_w: 800.0
-    charge_efficiency: 0.95
-    discharge_efficiency: 0.94
 
 localhost:
   hosts:
     localhost:
       ansible_connection: local
   vars:
-    one_minute: 10
-    scrape_interval: 5
-    playbook_dir: "{{ lookup('env', 'PWD') }}"
-    results_dir: "/home/akazem/Documents/PhD/projects/energy_proportionality/results/turing_pi_emulation/degradation/nepal_scenario/{{ now(utc=True).strftime('%y-%m-%d-%H-%M') }}"
     kubeconfig: "/home/akazem/Documents/PhD/projects/energy_proportionality/cluster_configuration/k0s-kubeconfig.yml"
-    local_user: akazem
-    workload: longterm
-    experiment_id: "{{ now(utc=True).strftime('%YY-%m-%d-%H-%M') }}"
-    solar_lat: 28.635740
-    solar_lon: 83.612029
-    solar_year: 2023
-    solar_start: "2019-09-20"
-    solar_end: "2019-09-29"
-    wp: 75.0
-    stc_irradiance: 1000.0
-    system_losses: 0.14
-    battery_capacity_wh: 1024.0
-    initial_soc_wh: 512.0
-    max_charge_w: 800.0
-    charge_efficiency: 0.95
-    discharge_efficiency: 0.94
     tz_offset_hours: 0

@@ -3,12 +3,15 @@ kind: LPSchedule
 metadata:
   name: flood-detection-optimization
 spec:
-  budget: 1201
+  e_sol_wh: 1201
+  soc_init_wh: 100
+  gamma: 0.5
   objective_type: "weighted_level_sum"
   applications:
     "App A":
       index: 1
       weight: 1
+      critical: 1
       levels:
         - level: 1
           cost: 1
@@ -19,6 +22,7 @@ spec:
     "App B":
       index: 2
       weight: 1
+      critical: 1
       levels:
         - level: 1
           cost: 5
@@ -26,6 +30,7 @@ spec:
     "App C":
       index: 3
       weight: 2
+      critical: 1
       levels:
         - level: 1
           cost: 5
@@ -39,6 +44,7 @@ spec:
     "App D":
       index: 4
       weight: 1
+      critical: 1
       levels:
         - level: 1
           cost: 10
@@ -58,6 +64,7 @@ spec:
     "App E":
       index: 5
       weight: 0.5
+      critical: 1
       levels:
         - level: 1
           cost: 5
@@ -77,6 +84,7 @@ spec:
     "App F":
       index: 6
       weight: 10
+      critical: 1
       levels:
         - level: 1
           cost: 10

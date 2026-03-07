@@ -2,6 +2,7 @@ import kopf
 import requests
 import kubernetes
 import time
+from kubernetes.client.exceptions import ApiException
 
 CLUSTER_IP_GET_LIMIT = "10.96.112.206"
 CLUSTER_IP_GET_REQUEST = "10.106.154.105"
@@ -16,7 +17,10 @@ ONE_MINUTE = 10
 @kopf.on.update("graceful-degradation.io", "v0", "lpschedules")
 def handle_optimization(spec, namespace, logger, **kwargs):
     payload = {
-        "budget": spec.get("budget", 0),
+        "gamma": float(spec.get("gamma", 0.0)),
+        "soc_init_wh": float(spec.get("soc_init_wh", 0.0)),
+        "e_sol": float(spec.get("e_sol_wh", 0.0)),
+        "c_base": float(spec.get("c_base", 124.0)),
         "applications": spec.get("applications", {}),
     }
 
@@ -27,8 +31,15 @@ def handle_optimization(spec, namespace, logger, **kwargs):
                 f"Calling LP solver at {SOLVER_URL} (attempt {attempt}/{MAX_RETRIES})"
             )
             response = requests.post(SOLVER_URL, json=payload, timeout=10)
+            if not response.ok:
+                logger.warning(
+                    "Solver HTTP %s: %s",
+                    response.status_code,
+                    response.text,
+                )
             response.raise_for_status()
-            decisions = response.json()
+            solver_output = response.json()
+            decisions = solver_output.get("active_levels", {})
             logger.info(f"Solver returned successfully on attempt {attempt}")
             break
         except Exception as e:
@@ -145,7 +156,7 @@ def ensure_job_running(api, job_name, namespace, logger):
             api.read_namespaced_job(name=kube_job_name, namespace=namespace)
             logger.info(f"Job {kube_job_name} already exists, skipping creation")
             return
-        except kubernetes.client.exceptions.ApiException as e:
+        except ApiException as e:
             if e.status != 404:
                 raise
 
@@ -169,7 +180,7 @@ def ensure_job_deleted(api, job_name, namespace, logger):
             name=kube_job_name, namespace="simulation", propagation_policy="Background"
         )
         logger.info(f"Job {kube_job_name} deleted successfully")
-    except kubernetes.client.exceptions.ApiException as e:
+    except ApiException as e:
         if e.status == 404:
             logger.info(f"Job {kube_job_name} does not exist (already deleted)")
         else:

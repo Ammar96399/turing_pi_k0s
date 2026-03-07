@@ -89,6 +89,9 @@
   ansible.builtin.command: >
     k0s kubectl patch clusterrole {{ descheduler_release_name }}
     -n {{ descheduler_namespace }} --type='json'
-    -p='[{"op": "add", "path": "/rules/-", "value": {"apiGroups": ["metrics.k8s.io"], "resources": ["nodes", "pods"], "verbs": ["get", "list"]}}]'
+    -p='[
+      {"op": "add", "path": "/rules/-", "value": {"apiGroups": ["metrics.k8s.io"], "resources": ["nodes", "pods"], "verbs": ["get", "list"]}},
+      {"op": "add", "path": "/rules/-", "value": {"apiGroups": [""], "resources": ["persistentvolumeclaims"], "verbs": ["get", "list", "watch"]}}
+    ]'
   register: patch_descheduler
   become: true

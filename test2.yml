@@ -1,33 +1,15 @@
-- name: Manage results directory
-  hosts: localhost
-  gather_facts: true
-  tasks:
-    - name: Clean results_dir
-      ansible.builtin.file:
-        path: "{{ results_dir }}"
-        state: absent
-
-    - name: Recreate results_dir
-      ansible.builtin.file:
-        path: "{{ results_dir }}"
-        state: directory
-        mode: "0755"
-
-- name: Run time_proxy
-  hosts: localhost
-  gather_facts: true
-  roles:
-    - role: time_proxy
-  vars:
-    reset_time_proxy: false
-
-- name: Start node control
+- name: Setup lp_schedules problem solver
   hosts: server
   gather_facts: true
-  become: false
-  roles:
-    - role: node_control
+  become: true
   vars:
-    window_size: 15
-    min_threshold: 40
-    max_threshold: 70
+    lp_force_max_solution: true
+  roles:
+    - role: lp_schedules
+
+# - name: Setup lp_schedules_operator
+#   hosts: server
+#   gather_facts: true
+#   become: true
+#   roles:
+#     - role: lp_schedules_operator

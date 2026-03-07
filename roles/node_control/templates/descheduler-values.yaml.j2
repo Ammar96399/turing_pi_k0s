@@ -8,7 +8,7 @@ kind: CronJob
 
 image:
   repository: ammar1999/descheduler
-  tag: "v0.33.0-arm64"
+  tag: "0.35.0-arm64"
   pullPolicy: IfNotPresent
 
 resources:
@@ -36,6 +36,11 @@ deschedulerPolicy:
   profiles:
     - name: default
       pluginConfig:
+        - name: "DefaultEvictor"
+          args:
+            namespaceLabelSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: simulation
         - name: "LowNodeUtilization"
           args:
             metricsUtilization:
@@ -95,3 +100,6 @@ rbac:
       - apiGroups: ["metrics.k8s.io"]
         resources: ["nodes", "pods"]
         verbs: ["get", "list"]
+      - apiGroups: [""]
+        resources: ["persistentvolumeclaims"]
+        verbs: ["get", "list", "watch"]

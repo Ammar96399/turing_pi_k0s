@@ -20,6 +20,24 @@ spec:
       - name: linear-program
         image: docker.io/library/linear-program:local
         imagePullPolicy: Never
+        command:
+          - python
+          - /app/linear_program.py
+          - --host
+          - 0.0.0.0
+          - --port
+          - "49090"
+          - --c_bat
+          - "{{ battery_capacity_wh | default(500.0) }}"
+          - --soc_min_wh
+          - "{{ soc_min_wh | default(0.0) }}"
+          - --soc_crit_wh
+          - "{{ soc_crit_wh | default(100.0) }}"
+          - --energy_scale
+          - "{{ energy_scale | default(3.0) }}"
+          - --c_base
+          - "{{ static_energy_wh | default(124.0) }}"
+          - "--force_max_solution={{ (lp_force_max_solution | default(false)) | ternary('true', 'false') }}"
         ports:
         - containerPort: 49090
           name: http
