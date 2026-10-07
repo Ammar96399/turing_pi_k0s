@@ -105,6 +105,12 @@ parser.add_argument(
     help="Bypass solver and always select the maximum level for each app (true/false)",
 )
 parser.add_argument(
+    "--force_min_solution",
+    type=str,
+    default="false",
+    help="Bypass solver and always select the minimum level for each app (true/false)",
+)
+parser.add_argument(
     "--c_base", type=float, default=124.0, help="Static energy consumption"
 )
 parser.add_argument("--host", type=str, default="0.0.0.0")
@@ -117,12 +123,18 @@ def _as_bool(value: str) -> bool:
 
 
 FORCE_MAX_SOLUTION = _as_bool(args.force_max_solution)
+FORCE_MIN_SOLUTION = _as_bool(args.force_min_solution)
 
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="HeliosGrace Solver")
+
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}
 
 
 class SolveRequest(BaseModel):
@@ -207,6 +219,127 @@ async def solve_optimization(request: SolveRequest):
         App_Levels = list(energy_cost.keys())
         total_w = sum(weights.values())
 
+        # --- Forced modes (bypass optimisation) ---
+        if FORCE_MAX_SOLUTION and FORCE_MIN_SOLUTION:
+            raise HTTPException(
+                status_code=400,
+                detail="force_max_solution and force_min_solution cannot both be true",
+            )
+
+        if FORCE_MAX_SOLUTION or FORCE_MIN_SOLUTION:
+            forced_mode_name = "max" if FORCE_MAX_SOLUTION else "min"
+            forced_mode_code = 1.0 if FORCE_MAX_SOLUTION else -1.0
+
+            active_levels = {f"A{i}L{j}": 0 for (i, j) in App_Levels}
+            selected_level_by_app = {}
+            for i in Apps:
+                app_levels = sorted([lvl for (idx, lvl) in App_Levels if idx == i])
+                if not app_levels:
+                    continue
+                selected_lvl = app_levels[-1] if FORCE_MAX_SOLUTION else app_levels[0]
+                selected_level_by_app[i] = selected_lvl
+                if FORCE_MAX_SOLUTION:
+                    for lvl in app_levels:
+                        active_levels[f"A{i}L{lvl}"] = 1
+                else:
+                    active_levels[f"A{i}L{selected_lvl}"] = 1
+
+            total_app_energy = sum(
+                energy_cost[i, j]
+                for i, j in App_Levels
+                if active_levels[f"A{i}L{j}"] == 1
+            )
+
+            raw_soc_final_wh = soc_init_wh - base_deficit + solar_net - total_app_energy
+            spill_wh_value = max(raw_soc_final_wh - c_bat, 0.0)
+            final_soc_wh = max(min(raw_soc_final_wh, c_bat), soc_floor)
+            final_soc_pct = (final_soc_wh / c_bat) * 100
+            soc_delta = final_soc_wh - soc_init_wh
+
+            qos_weighted_sum = 0.0
+            for i in Apps:
+                if Lmax[i] > 0 and i in selected_level_by_app:
+                    qos_weighted_sum += selected_level_by_app[i] * (
+                        weights[i] / (total_w * Lmax[i])
+                    )
+            qos_pct = qos_weighted_sum * 100
+            objective_value = (
+                gamma * qos_weighted_sum + (1 - gamma) * (final_soc_wh / c_bat) - 0.001
+            )
+
+            logger.info(
+                "Forced %s solution enabled; skipping optimisation.", forced_mode_name
+            )
+            logger.info(
+                f"Battery : {soc_init_pct*100:.1f}% -> {final_soc_pct:.2f}%"
+                f"  ({soc_delta:+.2f} Wh)"
+            )
+            logger.info(
+                f"Solar net: {solar_net:.2f} Wh"
+                + (
+                    f"  (spill: {spill_wh_value:.2f} Wh)"
+                    if spill_wh_value > 0.01
+                    else ""
+                )
+            )
+            logger.info(
+                f"App energy: {total_app_energy:.2f} Wh"
+                + (
+                    f"  + base deficit: {base_deficit:.2f} Wh"
+                    if base_deficit > 0
+                    else ""
+                )
+            )
+            logger.info(f"Energy  : {total_app_energy + c_base:.2f} Wh consumed")
+            logger.info(f"QoS     : {qos_pct:.2f}%")
+            logger.info(f"Objective: {objective_value:.4f}  (gamma={gamma})")
+
+            send_metrics_to_time_proxy(
+                TIME_PROXY_URL,
+                {
+                    "lp_status_code": 1.0,
+                    "lp_forced_mode": forced_mode_code,
+                    "lp_survival_mode": float(survival_mode),
+                    "lp_gamma": gamma,
+                    "lp_soc_init_wh": soc_init_wh,
+                    "lp_soc_final_wh": final_soc_wh,
+                    "lp_soc_delta_wh": soc_delta,
+                    "lp_e_sol_wh": e_sol,
+                    "lp_energy_static_wh": c_base,
+                    "lp_solar_net_wh": solar_net,
+                    "lp_base_deficit_wh": base_deficit,
+                    "lp_energy_apps_wh": total_app_energy,
+                    "lp_energy_consumed_wh": total_app_energy + c_base,
+                    "lp_qos_pct": qos_pct,
+                    "lp_objective": objective_value,
+                },
+                "linear_program",
+            )
+            send_active_levels_to_time_proxy(
+                TIME_PROXY_URL, active_levels, "linear_program"
+            )
+
+            logger.info("Active levels:")
+            for i, j in App_Levels:
+                if active_levels[f"A{i}L{j}"] == 1:
+                    logger.info(f"  {Index_to_Name[i]}  level {j}")
+            logger.info("=" * 80)
+
+            return {
+                "status": "Forced",
+                "forced_mode": forced_mode_name,
+                "survival_mode": survival_mode,
+                "soc_init_wh": soc_init_wh,
+                "soc_final_wh": round(final_soc_wh, 4),
+                "soc_delta_wh": round(soc_delta, 4),
+                "solar_to_apps_wh": round(total_app_energy, 4),
+                "base_deficit_wh": round(base_deficit, 4),
+                "energy_consumed_wh": round(total_app_energy + c_base, 4),
+                "qos_pct": round(qos_pct, 4),
+                "objective": round(objective_value, 4),
+                "active_levels": active_levels,
+            }
+
         # --- Decision variables ---
         model = LpProblem("HeliosGrace", LpMaximize)
         x = LpVariable.dicts("x", App_Levels, 0, 1, LpBinary)
@@ -233,9 +366,9 @@ async def solve_optimization(request: SolveRequest):
         # Energy term: maximise final SOC, normalised to [0, 1]
         energy_term = soc_final_wh * (1.0 / c_bat)
         # Spill penalty (epsilon = 0.001): soft tie-breaker
-        spill_penalty = spill_wh * (1.0 / c_bat)
+        # spill_penalty = spill_wh * (1.0 / c_bat)
 
-        model += gamma * qos_term + (1 - gamma) * energy_term - 0.001 * spill_penalty
+        model += gamma * qos_term + (1 - gamma) * energy_term - 0.001  # * spill_penalty
 
         # --- Level consistency (C3, C4) ---
         for i in Apps:
@@ -350,7 +483,7 @@ async def solve_optimization(request: SolveRequest):
                     "lp_solar_net_wh": solar_net,
                     "lp_base_deficit_wh": base_deficit,
                     "lp_energy_apps_wh": total_app_energy,
-                    "lp_spill_wh": spill_wh_value,
+                    # "lp_spill_wh": spill_wh_value,
                     "lp_energy_consumed_wh": total_app_energy + c_base,
                     "lp_qos_pct": qos_pct,
                     "lp_objective": objective_value,
@@ -374,7 +507,7 @@ async def solve_optimization(request: SolveRequest):
                 "soc_final_wh": round(final_soc_wh, 4),
                 "soc_delta_wh": round(soc_delta, 4),
                 "solar_to_apps_wh": round(total_app_energy, 4),
-                "spill_wh": round(spill_wh_value, 4),
+                # "spill_wh": round(spill_wh_value, 4),
                 "base_deficit_wh": round(base_deficit, 4),
                 "energy_consumed_wh": round(total_app_energy + c_base, 4),
                 "qos_pct": round(qos_pct, 4),
@@ -429,6 +562,7 @@ if __name__ == "__main__":
         f"Starting HeliosGrace Solver — "
         f"c_bat={args.c_bat} Wh, soc_min={args.soc_min_wh} Wh, "
         f"soc_crit={args.soc_crit_wh} Wh, energy_scale={args.energy_scale}, "
-        f"force_max_solution={FORCE_MAX_SOLUTION}"
+        f"force_max_solution={FORCE_MAX_SOLUTION}, "
+        f"force_min_solution={FORCE_MIN_SOLUTION}"
     )
     uvicorn.run(app, host=args.host, port=args.port)

@@ -20,7 +20,7 @@ all:
     charge_efficiency: 0.95
     discharge_efficiency: 0.94
     battery_capacity_wh: 500.0
-    initial_soc_wh: 125.0
+    initial_soc_wh: 250.0
     soc_crit_wh: 100.0
     soc_min_wh: 0.0
     static_energy_wh: 124.0

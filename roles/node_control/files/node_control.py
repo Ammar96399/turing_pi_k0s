@@ -26,6 +26,10 @@ if not os.path.exists(log_file):
 PROMETHEUS_URL = "http://131.254.100.18:30090/api/v1/query"
 TIME_PROXY_URL = "http://131.254.19.109:5000"
 TIME_PROXY_DEVICE = "node_control"
+SCALE_UP_PROBE_URL = os.getenv(
+    "SCALE_UP_PROBE_URL", "http://127.0.0.1:5010/scale-up-request"
+)
+SCALE_UP_TARGET_IP = "131.254.100.24"
 HISTORY_STATE_VALUE = {
     "normal": 0.0,
     "unbalanced": 1.0,
@@ -281,10 +285,12 @@ class Cluster:
         node_history_states = [node.history_state for node in self.nodes]
         if all(state == HistoryState.NORMAL for state in node_history_states):
             self.history_state = HistoryState.NORMAL
-        elif any(
-            state == HistoryState.UNDERLOADED for state in node_history_states
-        ) and not any(
-            state == HistoryState.OVERLOADED for state in node_history_states
+        elif (
+            any(state == HistoryState.UNDERLOADED for state in node_history_states)
+            and not any(
+                state == HistoryState.OVERLOADED for state in node_history_states
+            )
+            and self.get_number_of_nodes_on() > 1
         ):
             self.history_state = HistoryState.UNDERLOADED
         elif any(
@@ -315,6 +321,7 @@ class Cluster:
         logger.info("Cleared history of all nodes.")
 
     def trigger_descheduler(self):
+        # notify_scale_up_probe("Descheduler triggered")
         logger.info("Triggering descheduler job.")
         subprocess.run(
             [
@@ -344,7 +351,6 @@ class Cluster:
             result = largest_node.turn_on()
             result = result and largest_node.wait_for_join()
             largest_node.uncordon_node()
-            self.trigger_descheduler()
             self.clear_history()
             self.log_cluster_state_to_csv()
             return result
@@ -353,7 +359,6 @@ class Cluster:
             result = smallest_node.turn_on()
             result = result and smallest_node.wait_for_join()
             smallest_node.uncordon_node()
-            self.trigger_descheduler()
             self.clear_history()
             self.log_cluster_state_to_csv()
             return result
@@ -481,14 +486,32 @@ def send_to_time_proxy(
 
 def send_scaling_decision(decision: str):
     decision_value = 1.0 if decision == "scale_up" else -1.0
-    send_to_time_proxy("scaling_decision", decision_value)
+    # send_to_time_proxy("scaling_decision", decision_value)
+
+
+def notify_scale_up_probe(target_ip: str, namespace: str = "simulation") -> bool:
+    payload = {
+        "target_ip": target_ip,
+        "namespace": namespace,
+    }
+    try:
+        response = requests.post(SCALE_UP_PROBE_URL, json=payload, timeout=1.5)
+        if 200 <= response.status_code < 300:
+            return True
+        logger.warning(
+            f"scale-up probe notify failed with HTTP {response.status_code}: {response.text}"
+        )
+        return False
+    except requests.RequestException as e:
+        logger.warning(f"scale-up probe notify failed: {e}")
+        return False
 
 
 def send_cluster_state(cluster):
     nodes_on = float(cluster.get_number_of_nodes_on())
     state_value = HISTORY_STATE_VALUE.get(cluster.history_state.value, 0.0)
-    send_to_time_proxy("cluster_nodes_on", nodes_on)
-    send_to_time_proxy("cluster_state", state_value)
+    # send_to_time_proxy("cluster_nodes_on", nodes_on)
+    # send_to_time_proxy("cluster_state", state_value)
 
 
 def main():
@@ -527,9 +550,11 @@ def main():
             logger.info(
                 "Waiting for nodes to stabilize after scaling up. Sleeping for 160 seconds."
             )
-            sleep(60)
+            sleep(20)
             cluster.trigger_descheduler()
-            sleep(100)
+            sleep(20)
+            cluster.trigger_descheduler()
+            sleep(120)
             scaled_up = False
             cluster.trigger_descheduler()
 
@@ -570,7 +595,7 @@ def main():
             newest_sum * 1.1 < (nb_nodes_on - 1) * 100
         ):
             logger.info("Cluster is underloaded. Taking action.")
-            send_scaling_decision("scale_down")
+            # send_scaling_decision("scale_down")
             if cluster.scale_down():
                 send_cluster_state(cluster)
 
@@ -581,7 +606,8 @@ def main():
 
         elif cluster.history_state == HistoryState.OVERLOADED:
             logger.info("Cluster is overloaded. Taking action.")
-            send_scaling_decision("scale_up")
+            # notify_scale_up_probe(SCALE_UP_TARGET_IP)
+            # send_scaling_decision("scale_up")
             if cluster.scale_up():
                 scaled_up = True
                 send_cluster_state(cluster)

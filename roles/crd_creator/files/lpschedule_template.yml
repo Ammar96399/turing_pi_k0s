@@ -63,7 +63,7 @@ spec:
           dep: [{ "4": "1" }]
     "App E":
       index: 5
-      weight: 0.5
+      weight: 5
       critical: 1
       levels:
         - level: 1

@@ -8,6 +8,15 @@
     group: "{{ ansible_user }}"
     force: true
 
+- name: Copy the scale_up_timing_probe script
+  ansible.builtin.copy:
+    src: scale_up_timing_probe.py
+    dest: "/home/{{ ansible_user }}/simulation"
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    force: true
+
 - name: Remove logs file
   ansible.builtin.file:
     path: "/home/{{ ansible_user }}/simulation/node_control_log.log"
@@ -20,9 +29,30 @@
     state: absent
   ignore_errors: true
 
+- name: Remove timing probe logs file
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/simulation/scale_up_timing_probe.log"
+    state: absent
+  ignore_errors: true
+
+- name: Stop previous timing probe process if running
+  ansible.builtin.shell: |
+    if [ -f /home/{{ ansible_user }}/simulation/scale_up_timing_probe_pid.txt ]; then
+      kill $(cat /home/{{ ansible_user }}/simulation/scale_up_timing_probe_pid.txt) || true
+      rm -f /home/{{ ansible_user }}/simulation/scale_up_timing_probe_pid.txt
+    fi
+  changed_when: false
+
 - name: Run the node_control script in background
   ansible.builtin.shell: |
     nohup python3 /home/{{ ansible_user }}/simulation/node_control.py {{ one_minute }} {{ window_size }} {{ min_threshold }} {{ max_threshold }} > /home/{{ ansible_user }}/simulation/node_control_log.log 2>&1 & echo $! > /home/{{ ansible_user }}/simulation/node_control_pid.txt
+  args:
+    chdir: "/home/{{ ansible_user }}/simulation/"
+  changed_when: false
+
+- name: Run the scale_up_timing_probe script in background
+  ansible.builtin.shell: |
+    nohup python3 /home/{{ ansible_user }}/simulation/scale_up_timing_probe.py --target-ip 131.254.100.24 --namespace simulation > /home/{{ ansible_user }}/simulation/scale_up_timing_probe.log 2>&1 & echo $! > /home/{{ ansible_user }}/simulation/scale_up_timing_probe_pid.txt
   args:
     chdir: "/home/{{ ansible_user }}/simulation/"
   changed_when: false

@@ -4,6 +4,7 @@
   become: true
   vars:
     lp_force_max_solution: true
+    lp_force_min_solution: false
   roles:
     - role: lp_schedules
 

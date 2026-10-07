@@ -1,12 +1,12 @@
 import argparse
 import datetime as dt
-import os
-import time
 import json
 import logging
+import os
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 
 logging.basicConfig(
     level=logging.INFO,
@@ -215,50 +215,50 @@ def update_battery_soc(soc_wh, gen_wh, consumed_wh, step_hours: float):
     return soc_wh - draw
 
 
-def run_simulation(header, rows, start_date, end_date, wp, hourly_load_w):
-    time_idx = header.index("time")
-    ghi_idx = header.index("G(i)")
+# def run_simulation(header, rows, start_date, end_date, wp, hourly_load_w):
+#     time_idx = header.index("time")
+#     ghi_idx = header.index("G(i)")
 
-    soc = INITIAL_SOC_WH
-    results = []
+#     soc = INITIAL_SOC_WH
+#     results = []
 
-    new_header = header + ["P_gen_w", "Load_w", "Battery_SoC_wh", "Grid_Impact_w"]
+#     new_header = header + ["P_gen_w", "Load_w", "Battery_SoC_wh", "Grid_Impact_w"]
 
-    for r in rows:
-        if len(r) != 6:
-            continue
-        t = dt.datetime.strptime(r[time_idx], "%Y%m%d:%H%M")
-        if not (start_date <= t.date() <= end_date):
-            continue
+#     for r in rows:
+#         if len(r) != 6:
+#             continue
+#         t = dt.datetime.strptime(r[time_idx], "%Y%m%d:%H%M")
+#         if not (start_date <= t.date() <= end_date):
+#             continue
 
-        irradiance_wm2 = float(r[ghi_idx])
-        p_gen = (irradiance_wm2 / STC_IRRADIANCE) * wp * (1 - SYSTEM_LOSSES)
+#         irradiance_wm2 = float(r[ghi_idx])
+#         p_gen = (irradiance_wm2 / STC_IRRADIANCE) * wp * (1 - SYSTEM_LOSSES)
 
-        net_p = p_gen - hourly_load_w
-        grid_impact = 0
+#         net_p = p_gen - hourly_load_w
+#         grid_impact = 0
 
-        if net_p > 0:
-            charge_power = min(net_p * CHARGE_EFFICIENCY, MAX_CHARGE_W)
-            new_soc = min(BATTERY_CAPACITY_WH, soc + charge_power)
-            grid_impact = net_p - (new_soc - soc) / CHARGE_EFFICIENCY
-            soc = new_soc
-        else:
-            needed = abs(net_p) / DISCHARGE_EFFICIENCY
-            draw = min(needed, soc)
-            soc -= draw
-            grid_impact = (needed - draw) * -1
+#         if net_p > 0:
+#             charge_power = min(net_p * CHARGE_EFFICIENCY, MAX_CHARGE_W)
+#             new_soc = min(BATTERY_CAPACITY_WH, soc + charge_power)
+#             grid_impact = net_p - (new_soc - soc) / CHARGE_EFFICIENCY
+#             soc = new_soc
+#         else:
+#             needed = abs(net_p) / DISCHARGE_EFFICIENCY
+#             draw = min(needed, soc)
+#             soc -= draw
+#             grid_impact = (needed - draw) * -1
 
-        results.append(
-            r
-            + [
-                f"{p_gen:.2f}",
-                f"{hourly_load_w:.2f}",
-                f"{soc:.2f}",
-                f"{grid_impact:.2f}",
-            ]
-        )
+#         results.append(
+#             r
+#             + [
+#                 f"{p_gen:.2f}",
+#                 f"{hourly_load_w:.2f}",
+#                 f"{soc:.2f}",
+#                 f"{grid_impact:.2f}",
+#             ]
+#         )
 
-    return new_header, results
+#     return new_header, results
 
 
 def main():
@@ -318,7 +318,20 @@ def main():
 
     selected_dates = first_day_of_each_month(args.year)
     selected_dates_set = set(selected_dates)
-    gamma_by_day_index = [0.0, 0.0, 0.0, 0.2, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    gamma_by_day_index = [
+        0.01,
+        0.01,
+        0.01,
+        0.20,
+        0.99,
+        0.99,
+        0.01,
+        0.01,
+        0.01,
+        0.99,
+        0.01,
+        0.01,
+    ]
     fetch_start = dt.date(args.year, 1, 1)
     fetch_end = dt.date(args.year, 12, 31)
 
@@ -363,7 +376,7 @@ def main():
             if simulation_start_date is None:
                 simulation_start_date = sim_dt.date()
 
-            day_index = (sim_dt.date() - simulation_start_date).days
+            day_index = (sim_dt.date() - simulation_start_date).days + 4
             if day_index < 0:
                 time.sleep(1)
                 continue

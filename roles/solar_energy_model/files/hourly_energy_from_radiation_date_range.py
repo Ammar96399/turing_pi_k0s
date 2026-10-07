@@ -330,7 +330,20 @@ def main():
 
     selected_dates = dates_inclusive(start_date, end_date)
     selected_dates_set = set(selected_dates)
-    gamma_by_day_index = [0.0, 0.0, 0.0, 0.2, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    gamma_by_day_index = [
+        0.01,
+        0.01,
+        0.01,
+        0.2,
+        0.99,
+        0.99,
+        0.01,
+        0.01,
+        0.01,
+        0.99,
+        0.01,
+        0.01,
+    ]
     fetch_start = start_date
     fetch_end = end_date
 

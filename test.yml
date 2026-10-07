@@ -37,12 +37,13 @@
 #   roles:
 #     - role: get_limit
 
-- name: Setup lp_schedules problem solver
+- name: Setup lpre_schedules problem solver
   hosts: server
   gather_facts: true
   become: true
   vars:
     lp_force_max_solution: false
+    lp_force_min_solution: true
   roles:
     - role: lp_schedules
 
@@ -89,21 +90,21 @@
         state: directory
         mode: "0755"
 
-- name: Delete simulation jobs if they exist
-  hosts: server
-  become: true
-  gather_facts: true
-  tasks:
-    - name: Delete jobs in simulation namespace
-      ansible.builtin.shell: |
-        k0s kubectl delete jobs --all -n simulation --ignore-not-found=true
-
-# - name: Run application preparation
-#   hosts: turing_pi_cluster
-#   gather_facts: true
+# - name: Delete simulation jobs if they exist
+#   hosts: server
 #   become: true
-#   roles:
-#     - role: deploy_applications_prereq
+#   gather_facts: true
+#   tasks:
+#     - name: Delete jobs in simulation namespace
+#       ansible.builtin.shell: |
+#         k0s kubectl delete jobs --all -n simulation --ignore-not-found=true
+
+- name: Run application preparation
+  hosts: turing_pi_cluster
+  gather_facts: true
+  become: true
+  roles:
+    - role: deploy_applications_prereq
 
 - name: Run time_proxy
   hosts: localhost

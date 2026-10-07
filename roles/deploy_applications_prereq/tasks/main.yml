@@ -122,11 +122,22 @@
 - name: Import the docker image to the nodes
   ansible.builtin.command: sudo k0s ctr images import /home/{{ ansible_user }}/simulation/application-simulator.tar
 
-- name: Ensure simulation namespace exists
-  ansible.builtin.shell: |
-    k0s kubectl create namespace simulation --dry-run=client -o yaml | k0s kubectl apply -f -
-  ignore_errors: true
+- name: Check if simulation namespace exists
+  ansible.builtin.command: sudo k0s kubectl get namespace simulation
+  register: simulation_namespace
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ (groups['server'] | default([inventory_hostname]))[0] }}"
+  run_once: true
 
-- name: Delete jobs in simulation namespace
-  ansible.builtin.shell: |
-    k0s kubectl delete jobs --all -n simulation --ignore-not-found=true
+- name: Create simulation namespace when missing
+  ansible.builtin.command: sudo k0s kubectl create namespace simulation
+  when: simulation_namespace.rc != 0
+  delegate_to: "{{ (groups['server'] | default([inventory_hostname]))[0] }}"
+  run_once: true
+
+- name: Delete jobs in simulation namespace when it already exists
+  ansible.builtin.command: sudo k0s kubectl delete jobs --all -n simulation --ignore-not-found=true
+  when: simulation_namespace.rc == 0
+  delegate_to: "{{ (groups['server'] | default([inventory_hostname]))[0] }}"
+  run_once: true
