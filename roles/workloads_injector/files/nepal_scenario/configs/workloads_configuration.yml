@@ -201,7 +201,7 @@ configuration:
     applcation: Flood Response
     description: Classify seismometric data to detect flood events
     input_file: vm_data_06a685da8310b412b8634cc33e7cf71f.csv
-    max_value: 2.0
+    max_value: 2
     time_shift_hours: 28
     day_to_extract: 3
     rpi_model: cm4-dvfs
